@@ -6,6 +6,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-11 — Brilliant Tier Release
+
+### Added
+- **Context Map** (\`ckforensics map\`): visualize what eats your context window.
+  - Heatmap of context items by category (tool:Read, tool:Edit, assistant, user, ...)
+  - \`--simulate-compact\` projects which items survive next auto-compact
+  - Snapshot save/load/list/diff for context evolution tracking
+  - \`--pin --emit-manifest\` produces paste-ready keep-list for next CC prompt
+  - Documented ±20% attribution margin (heuristic, best-effort)
+  - Tool-name correlation: tool_result items inherit tool name from paired tool_use
+  - Migration 004 adds context_snapshots table
+
+### Notes
+- v0.2.0 ships Skill Recommender (0.1.6) + Context Map (0.2.0). Log Infrastructure (P11) deferred to v0.2.1+.
+
 ## [0.1.7] - 2026-05-11
 
 ### Fixed

@@ -49,6 +49,11 @@ const KNOWN_MIGRATIONS: Migration[] = [
     filename: "003-skill-catalog.sql",
     sqlPath: join(MIGRATIONS_DIR, "003-skill-catalog.sql"),
   },
+  {
+    version: 4,
+    filename: "004-context-snapshots.sql",
+    sqlPath: join(MIGRATIONS_DIR, "004-context-snapshots.sql"),
+  },
 ];
 
 /**
