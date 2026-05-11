@@ -1,0 +1,8 @@
+title = "ckforensics gitleaks config"
+
+[allowlist]
+description = "Synthetic test fixtures for redaction rules"
+paths = [
+  '''src/privacy/__tests__/.*''',
+  '''src/parsers/__fixtures__/.*''',
+]

@@ -1,0 +1,15 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+.ckforensics-test/
+coverage/
+*.tsbuildinfo
+# Downloaded/compiled binaries (populated by postinstall or build-all.sh)
+binaries/
+
+binaries/
+build-output/

@@ -1,0 +1,55 @@
+{
+  "name": "ckforensics",
+  "version": "0.1.0",
+  "module": "index.ts",
+  "type": "module",
+  "bin": {
+    "ckforensics": "./bin/ckforensics.js"
+  },
+  "scripts": {
+    "cli": "bun run src/cli/index.ts",
+    "build:all": "./scripts/build-all.sh",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "postinstall": "node ./scripts/postinstall.js || true"
+  },
+  "files": [
+    "bin/",
+    "scripts/postinstall.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "bun": ">=1.1.0"
+  },
+  "dependencies": {
+    "commander": "^14.0.3"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "description": "Forensic CLI for Claude Code sessions — audit, redact, export your transcripts.",
+  "homepage": "https://github.com/phong28zk/ckforensics#readme",
+  "bugs": {
+    "url": "https://github.com/phong28zk/ckforensics/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/phong28zk/ckforensics.git"
+  },
+  "author": "phong28zk",
+  "license": "MIT",
+  "keywords": [
+    "claude",
+    "claude-code",
+    "anthropic",
+    "cli",
+    "audit",
+    "forensics",
+    "sqlite",
+    "bun"
+  ]
+}
