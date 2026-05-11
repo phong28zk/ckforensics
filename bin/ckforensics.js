@@ -28,10 +28,11 @@ const __dirname  = path.dirname(__filename);
 
 // ── Platform → binary name mapping ───────────────────────────────────────────
 
+// darwin-x64 (Intel Mac) intentionally omitted — see release.yml comment.
+// Intel Mac users: build from source via `bun build --compile --target=bun-darwin-x64`.
 const PLATFORM_MAP = {
   "linux-x64":    "ckforensics-linux-x64",
   "linux-arm64":  "ckforensics-linux-arm64",
-  "darwin-x64":   "ckforensics-darwin-x64",
   "darwin-arm64": "ckforensics-darwin-arm64",
   "win32-x64":    "ckforensics-win-x64.exe",
 };

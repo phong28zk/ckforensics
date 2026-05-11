@@ -49,7 +49,7 @@ detect_current_target() {
   case "${os}-${arch}" in
     Linux-x86_64)   echo "bun-linux-x64"    ;;
     Linux-aarch64)  echo "bun-linux-arm64"  ;;
-    Darwin-x86_64)  echo "bun-darwin-x64"   ;;
+    Darwin-x86_64)  err "Intel Mac builds not officially shipped — build from source or open an issue" ;;
     Darwin-arm64)   echo "bun-darwin-arm64" ;;
     MINGW*|CYGWIN*|MSYS*) echo "bun-windows-x64" ;;
     *) err "Unsupported platform: ${os}-${arch}" ;;
@@ -61,7 +61,6 @@ detect_current_target() {
 TARGETS=(
   "bun-linux-x64:ckforensics-linux-x64"
   "bun-linux-arm64:ckforensics-linux-arm64"
-  "bun-darwin-x64:ckforensics-darwin-x64"
   "bun-darwin-arm64:ckforensics-darwin-arm64"
   "bun-windows-x64:ckforensics-win-x64.exe"
 )

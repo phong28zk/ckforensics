@@ -29,10 +29,9 @@ jobs:
             bun_target: bun-linux-arm64
             outfile:    ckforensics-linux-arm64
 
-          - label:      darwin-x64
-            runner:     macos-13          # Intel runner
-            bun_target: bun-darwin-x64
-            outfile:    ckforensics-darwin-x64
+          # darwin-x64 dropped: free-tier macos-13 runners queue indefinitely
+          # (12+ min unpicked); Apple Silicon covers 95%+ of macOS users in 2026.
+          # Users on Intel can build from source or open an issue requesting revival.
 
           - label:      darwin-arm64
             runner:     macos-14          # Apple Silicon runner
@@ -117,7 +116,6 @@ jobs:
           files: |
             dist/ckforensics-linux-x64
             dist/ckforensics-linux-arm64
-            dist/ckforensics-darwin-x64
             dist/ckforensics-darwin-arm64
             dist/ckforensics-win-x64.exe
             dist/checksums.txt

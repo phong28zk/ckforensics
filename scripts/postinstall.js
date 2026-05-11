@@ -57,10 +57,11 @@ if (fs.existsSync(path.join(PKG_ROOT, ".git"))) {
 
 // ── Platform → binary name mapping ───────────────────────────────────────────
 
+// darwin-x64 (Intel Mac) intentionally omitted from prebuilt releases.
+// Intel Mac users: build from source — see README "Build from source".
 const PLATFORM_MAP = {
   "linux-x64":    "ckforensics-linux-x64",
   "linux-arm64":  "ckforensics-linux-arm64",
-  "darwin-x64":   "ckforensics-darwin-x64",
   "darwin-arm64": "ckforensics-darwin-arm64",
   "win32-x64":    "ckforensics-win-x64.exe",
 };
