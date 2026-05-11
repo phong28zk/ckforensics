@@ -6,6 +6,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-05-11
+
+### Added
+- Process + prompt advice bank in `suggest` command: recommendations now work for non-ClaudeKit users.
+  - New `src/recommender/process-advice-bank.ts`: static curated entries for all 5 pattern types.
+  - Each pattern type has process + prompt advice: read-fanout (Glob, repomix, ls-first), test-loop (watch mode, pre-commit hook, narrow scope), manual-diff-cycle (MultiEdit batch, commit-between-iterations), grep-walk (ripgrep one-shot, repomix, knowledge graph), subagent-skip (Task tool, plan-first, pipe-bash).
+- New recommendation types: `[Skill]`, `[Process]`, `[Prompt]` — each rendered with distinct color coding (cyan/blue/yellow) and confidence.
+- Suggest JSON schema bumped to `ckforensics-suggest-v2` (`$schema`, `generatedAt`, `recommendations[]`).
+
+### Changed
+- Default `--top` raised from 3 to 5 so users see a mix of all recommendation types.
+- `Recommendation` type is now a discriminated union (`SkillRecommendation | ProcessRecommendation | PromptRecommendation`).
+- Suggest text and markdown output headers renamed to "Recommendations" (was "Skill Recommendations").
+
 ## [0.2.3] - 2026-05-11
 
 ### Changed

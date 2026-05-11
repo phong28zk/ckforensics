@@ -1,11 +1,14 @@
 /**
  * Output formatters for the suggest command.
+ * Handles all three recommendation types: skill, process, prompt.
  * Extracted to keep suggest.ts under 200 lines.
  */
 
-import { bold, cyan, green, yellow, dim } from "../color.ts";
+import { bold, cyan, blue, yellow, green, dim } from "../color.ts";
 import { truncateRight } from "../output-formatter.ts";
-import type { Recommendation } from "../../recommender/types.ts";
+import type { Recommendation, SkillRecommendation, ProcessRecommendation, PromptRecommendation } from "../../recommender/types.ts";
+
+// ── Utility helpers ───────────────────────────────────────────────────────────
 
 export function formatUsd(usd: number): string {
   if (usd < 0.001) return "<$0.001";
@@ -17,10 +20,30 @@ export function formatTokens(n: number): string {
   return String(n);
 }
 
-export function renderTextRec(rec: Recommendation, rank: number): string {
+/** Color-coded type tag for terminal output. */
+function typeTag(rec: Recommendation): string {
+  switch (rec.type) {
+    case "skill":   return cyan("[Skill]  ");
+    case "process": return blue("[Process]");
+    case "prompt":  return yellow("[Prompt] ");
+  }
+}
+
+/** Short label for markdown section heading. */
+function typeLabel(rec: Recommendation): string {
+  switch (rec.type) {
+    case "skill":   return "Skill";
+    case "process": return "Process";
+    case "prompt":  return "Prompt";
+  }
+}
+
+// ── Text renderers ────────────────────────────────────────────────────────────
+
+function renderSkillText(rec: SkillRecommendation, rank: number): string {
   const lines: string[] = [];
   const conf = rec.confidence >= 80 ? green : rec.confidence >= 60 ? yellow : dim;
-  lines.push(`${bold(`#${rank}`)}  ${cyan(rec.invocationHint)}  — ${bold(rec.skillName)}`);
+  lines.push(`${bold(`#${rank}`)}  ${typeTag(rec)}  ${cyan(rec.invocationHint)}  — ${bold(rec.skillName)}`);
   if (rec.description) {
     lines.push(`    ${dim(truncateRight(rec.description, 72))}`);
   }
@@ -40,9 +63,33 @@ export function renderTextRec(rec: Recommendation, rank: number): string {
   return lines.join("\n");
 }
 
-export function renderMarkdownRec(rec: Recommendation, rank: number): string {
+function renderAdviceText(rec: ProcessRecommendation | PromptRecommendation, rank: number): string {
   const lines: string[] = [];
-  lines.push(`### #${rank} \`${rec.invocationHint}\` — ${rec.skillName}`);
+  const conf = rec.confidence >= 80 ? green : rec.confidence >= 60 ? yellow : dim;
+  lines.push(`${bold(`#${rank}`)}  ${typeTag(rec)}  ${bold(rec.title)}`);
+  lines.push(`    ${dim(truncateRight(rec.description, 72))}`);
+  lines.push(`    Confidence: ${conf(`${rec.confidence}%`)}`);
+  if (rec.evidence.length > 0) {
+    lines.push(`    Evidence:`);
+    for (const ev of rec.evidence) {
+      const ts = ev.timestamp ? `[${ev.timestamp.slice(0, 19).replace("T", " ")}]` : "";
+      lines.push(`      ${dim(ts)} turn ${ev.turnIndex}: ${ev.toolCallSummary}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+/** Render a single recommendation as terminal text. */
+export function renderTextRec(rec: Recommendation, rank: number): string {
+  if (rec.type === "skill") return renderSkillText(rec, rank);
+  return renderAdviceText(rec, rank);
+}
+
+// ── Markdown renderers ────────────────────────────────────────────────────────
+
+function renderSkillMarkdown(rec: SkillRecommendation, rank: number): string {
+  const lines: string[] = [];
+  lines.push(`### #${rank} [${typeLabel(rec)}] \`${rec.invocationHint}\` — ${rec.skillName}`);
   if (rec.description) lines.push(`> ${rec.description}`);
   lines.push("");
   lines.push(`- **Confidence:** ${rec.confidence}%`);
@@ -60,4 +107,26 @@ export function renderMarkdownRec(rec: Recommendation, rank: number): string {
     }
   }
   return lines.join("\n");
+}
+
+function renderAdviceMarkdown(rec: ProcessRecommendation | PromptRecommendation, rank: number): string {
+  const lines: string[] = [];
+  lines.push(`### #${rank} [${typeLabel(rec)}] ${rec.title}`);
+  lines.push(`> ${rec.description}`);
+  lines.push("");
+  lines.push(`- **Confidence:** ${rec.confidence}%`);
+  if (rec.evidence.length > 0) {
+    lines.push("- **Evidence:**");
+    for (const ev of rec.evidence) {
+      const ts = ev.timestamp ? `\`${ev.timestamp.slice(0, 19)}\`` : "";
+      lines.push(`  - Turn ${ev.turnIndex} ${ts}: ${ev.toolCallSummary}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+/** Render a single recommendation as Markdown. */
+export function renderMarkdownRec(rec: Recommendation, rank: number): string {
+  if (rec.type === "skill") return renderSkillMarkdown(rec, rank);
+  return renderAdviceMarkdown(rec, rank);
 }

@@ -19,10 +19,10 @@ import { detectPatterns } from "../../recommender/pattern-detector.ts";
 import { buildRecommendations } from "../../recommender/pattern-skill-matcher.ts";
 import { buildSavingsMap } from "../../recommender/savings-estimator.ts";
 import { filterDismissed } from "../../recommender/dismissed-recs-store.ts";
-import { emitJson } from "../output-formatter.ts";
+import { emitJson, emitRawJson } from "../output-formatter.ts";
 import { red, dim as dimC, bold as boldC } from "../color.ts";
 import { renderTextRec, renderMarkdownRec } from "./suggest-formatters.ts";
-import type { Recommendation } from "../../recommender/types.ts";
+import type { Recommendation, SkillRecommendation } from "../../recommender/types.ts";
 
 interface GlobalOptions { json: boolean; db: string }
 
@@ -61,6 +61,12 @@ function resolveSessionIds(
 
 // ── Recommendation pipeline ───────────────────────────────────────────────────
 
+/** Stable dedup key for any recommendation variant. */
+function recKey(rec: Recommendation): string {
+  if (rec.type === "skill") return `skill:${rec.skillName}`;
+  return `${rec.type}:${rec.title}`;
+}
+
 function buildRecs(
   db: ReturnType<typeof openDb>,
   sessionIds: string[],
@@ -82,13 +88,22 @@ function buildRecs(
     }
   }
 
-  // Deduplicate by skillName (keep highest confidence), filter dismissed, cap
+  // Deduplicate by (type, key): keep highest confidence per unique key.
   const deduped = new Map<string, Recommendation>();
   for (const rec of allRecs) {
-    const ex = deduped.get(rec.skillName);
-    if (!ex || rec.confidence > ex.confidence) deduped.set(rec.skillName, rec);
+    const key = recKey(rec);
+    const ex = deduped.get(key);
+    if (!ex || rec.confidence > ex.confidence) deduped.set(key, rec);
   }
-  return filterDismissed([...deduped.values()])
+
+  // filterDismissed only operates on skill recs (has skillName field).
+  // Advice recs pass through unchanged.
+  const all = [...deduped.values()];
+  const skillRecs = all.filter((r): r is SkillRecommendation => r.type === "skill");
+  const adviceRecs = all.filter((r) => r.type !== "skill");
+  const filteredSkills = filterDismissed(skillRecs);
+
+  return [...filteredSkills, ...adviceRecs]
     .sort((a, b) => b.confidence - a.confidence)
     .slice(0, topN);
 }
@@ -103,7 +118,7 @@ export function registerSuggestCommand(program: Command): void {
     .option("--last", "analyze most recent session (default)", false)
     .option("--days <n>", "analyze sessions from the last N days")
     .option("--min-confidence <n>", "minimum confidence threshold (0-100)", "60")
-    .option("--top <n>", "max recommendations to show", "3")
+    .option("--top <n>", "max recommendations to show", "5")
     .option("--format <fmt>", "output format: text|md|json", "text")
     .action(async (opts: SuggestOptions) => {
       const globals = program.opts<GlobalOptions>();
@@ -127,7 +142,9 @@ export function registerSuggestCommand(program: Command): void {
 
         const sessionIds = resolveSessionIds(db, opts);
         if (sessionIds.length === 0) {
-          globals.json || opts.format === "json" ? emitJson([]) : process.stdout.write(dimC("(no sessions found)\n"));
+          globals.json || opts.format === "json"
+            ? emitRawJson({ $schema: "ckforensics-suggest-v2", generatedAt: new Date().toISOString(), recommendations: [] })
+            : process.stdout.write(dimC("(no sessions found)\n"));
           process.exit(3);
         }
 
@@ -139,18 +156,25 @@ export function registerSuggestCommand(program: Command): void {
           process.exit(3);
         }
 
-        if (globals.json || opts.format === "json") { emitJson(ranked); return; }
+        if (globals.json || opts.format === "json") {
+          emitRawJson({
+            $schema: "ckforensics-suggest-v2",
+            generatedAt: new Date().toISOString(),
+            recommendations: ranked,
+          });
+          return;
+        }
 
         if (ranked.length === 0) { process.stdout.write(dimC("(no recommendations)\n")); return; }
 
         if (opts.format === "md") {
-          process.stdout.write("# Skill Recommendations\n\n");
+          process.stdout.write("# Recommendations\n\n");
           ranked.forEach((rec, i) => process.stdout.write(renderMarkdownRec(rec, i + 1) + "\n\n"));
           return;
         }
 
         // Default: text
-        process.stdout.write(boldC("Skill Recommendations\n") + dimC("─".repeat(40)) + "\n\n");
+        process.stdout.write(boldC("Recommendations\n") + dimC("─".repeat(40)) + "\n\n");
         ranked.forEach((rec, i) => process.stdout.write(renderTextRec(rec, i + 1) + "\n\n"));
       } finally {
         closeDb(db);

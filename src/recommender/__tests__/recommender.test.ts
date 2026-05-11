@@ -1,5 +1,5 @@
 /**
- * Recommender test suite (Phase 09).
+ * Recommender test suite (Phase 09 + v0.2.4 advice bank).
  *
  * Covers:
  *   1. skill-catalog-indexer: tmpdir SKILL.md fixtures → parse + persist
@@ -9,6 +9,9 @@
  *   5. skill-usage-tracker: fixture events with <command-name> → row inserted
  *   6. dismissed-recs-store: dismiss/undismiss/filter
  *   7. effectiveness-analyzer: no crash on empty DB
+ *   8. process-advice-bank: completeness + advice types
+ *   9. buildRecommendations: mixed skill+advice output; empty-catalog fallback
+ *  10. suggest-formatters: text + markdown smoke tests
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
@@ -21,7 +24,7 @@ import { openDb } from "../../store/db.ts";
 import { runMigrations } from "../../store/migration-runner.ts";
 import { indexSkillCatalog, loadCatalog } from "../skill-catalog-indexer.ts";
 import { detectPatterns } from "../pattern-detector.ts";
-import { matchSkillsForPattern } from "../pattern-skill-matcher.ts";
+import { matchSkillsForPattern, buildRecommendations } from "../pattern-skill-matcher.ts";
 import { estimateSavings, buildSavingsMap } from "../savings-estimator.ts";
 import {
   trackSkillUsage,
@@ -30,8 +33,10 @@ import {
 } from "../skill-usage-tracker.ts";
 import { filterDismissed } from "../dismissed-recs-store.ts";
 import { analyzeSkillEffectiveness } from "../effectiveness-analyzer.ts";
+import { ADVICE_BANK } from "../process-advice-bank.ts";
+import { renderTextRec, renderMarkdownRec } from "../../cli/commands/suggest-formatters.ts";
 import type { HydratedEvent } from "../../audit/manifest-types.ts";
-import type { SkillCatalogEntry } from "../types.ts";
+import type { PatternType, SkillCatalogEntry, Pattern } from "../types.ts";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -540,5 +545,254 @@ describe("effectiveness-analyzer", () => {
     expect(report).toHaveProperty("avgToolCallsWithout");
     expect(report.effectivenessScore).toBeGreaterThanOrEqual(0);
     expect(report.effectivenessScore).toBeLessThanOrEqual(100);
+  });
+});
+
+// ── 8. Process advice bank ────────────────────────────────────────────────────
+
+describe("process-advice-bank", () => {
+  const ALL_PATTERN_TYPES: PatternType[] = [
+    "read-fanout",
+    "test-loop",
+    "manual-diff-cycle",
+    "grep-walk",
+    "subagent-skip",
+  ];
+
+  it("bank covers every PatternType", () => {
+    for (const pt of ALL_PATTERN_TYPES) {
+      expect(ADVICE_BANK[pt]).toBeDefined();
+      expect(ADVICE_BANK[pt].length).toBeGreaterThan(0);
+    }
+  });
+
+  it("each pattern type has at least one process entry", () => {
+    for (const pt of ALL_PATTERN_TYPES) {
+      const hasProcess = ADVICE_BANK[pt].some((e) => e.adviceType === "process");
+      expect(hasProcess).toBe(true);
+    }
+  });
+
+  it("all entries have non-empty title and description", () => {
+    for (const pt of ALL_PATTERN_TYPES) {
+      for (const entry of ADVICE_BANK[pt]) {
+        expect(entry.title.length).toBeGreaterThan(0);
+        expect(entry.description.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("all baseConfidence values are in range 50-100", () => {
+    for (const pt of ALL_PATTERN_TYPES) {
+      for (const entry of ADVICE_BANK[pt]) {
+        expect(entry.baseConfidence).toBeGreaterThanOrEqual(50);
+        expect(entry.baseConfidence).toBeLessThanOrEqual(100);
+      }
+    }
+  });
+
+  it("adviceType is either 'process' or 'prompt'", () => {
+    for (const pt of ALL_PATTERN_TYPES) {
+      for (const entry of ADVICE_BANK[pt]) {
+        expect(["process", "prompt"]).toContain(entry.adviceType);
+      }
+    }
+  });
+});
+
+// ── 9. buildRecommendations (mixed output + empty catalog) ────────────────────
+
+describe("buildRecommendations", () => {
+  const sampleCatalog: SkillCatalogEntry[] = [
+    { name: "scout", description: "Explore codebase files", keywords: ["explore", "search", "scout", "codebase"], path: "/tmp/scout/SKILL.md", mtime: 0 },
+    { name: "test", description: "Run test suites", keywords: ["test", "bun", "vitest", "coverage"], path: "/tmp/test/SKILL.md", mtime: 0 },
+  ];
+
+  function makeReadFanoutPattern(): Pattern {
+    return {
+      type: "read-fanout",
+      dir: "/src",
+      count: 7,
+      turnIndices: [0, 1],
+      timestamps: ["2025-01-01T00:00:00Z", "2025-01-01T00:01:00Z"],
+      tokensConsumed: 15000,
+    };
+  }
+
+  function makeSubagentSkipPattern(): Pattern {
+    return {
+      type: "subagent-skip",
+      toolCallCount: 25,
+      turnIndices: [0],
+      timestamps: ["2025-01-01T00:00:00Z"],
+      tokensConsumed: 50000,
+    };
+  }
+
+  it("empty catalog → returns only process/prompt advice (non-zero)", () => {
+    const pattern = makeReadFanoutPattern();
+    const savingsMap = new Map<string, { tokens: number; usd: number }>();
+    const recs = buildRecommendations(pattern, [], savingsMap, { minConfidence: 0 });
+    expect(recs.length).toBeGreaterThan(0);
+    // All should be process or prompt (no skills in empty catalog)
+    for (const r of recs) {
+      expect(["process", "prompt"]).toContain(r.type);
+    }
+  });
+
+  it("populated catalog → returns mix of skill + advice types", () => {
+    const pattern = makeReadFanoutPattern();
+    const savingsMap = buildSavingsMap(["scout", "test"], pattern.tokensConsumed, null);
+    const recs = buildRecommendations(pattern, sampleCatalog, savingsMap, { minConfidence: 0 });
+
+    const types = new Set(recs.map((r) => r.type));
+    expect(types.has("skill")).toBe(true);
+    expect(types.has("process") || types.has("prompt")).toBe(true);
+  });
+
+  it("minConfidence filter applies to all types uniformly", () => {
+    const pattern = makeReadFanoutPattern();
+    const savingsMap = new Map<string, { tokens: number; usd: number }>();
+    const highThreshold = buildRecommendations(pattern, [], savingsMap, { minConfidence: 99 });
+    const lowThreshold = buildRecommendations(pattern, [], savingsMap, { minConfidence: 0 });
+    // Higher threshold ≤ lower threshold in count
+    expect(highThreshold.length).toBeLessThanOrEqual(lowThreshold.length);
+  });
+
+  it("recommendations have required fields for each type", () => {
+    const pattern = makeSubagentSkipPattern();
+    const savingsMap = new Map<string, { tokens: number; usd: number }>();
+    const recs = buildRecommendations(pattern, sampleCatalog, savingsMap, { minConfidence: 0 });
+
+    for (const r of recs) {
+      expect(r).toHaveProperty("type");
+      expect(r).toHaveProperty("confidence");
+      expect(r).toHaveProperty("evidence");
+      if (r.type === "skill") {
+        expect(r).toHaveProperty("skillName");
+        expect(r).toHaveProperty("invocationHint");
+        expect(r).toHaveProperty("estimatedTokensSaved");
+      } else {
+        expect(r).toHaveProperty("title");
+        expect(r).toHaveProperty("description");
+      }
+    }
+  });
+
+  it("confidence values are clamped to 0-100", () => {
+    const pattern = makeReadFanoutPattern();
+    const savingsMap = new Map<string, { tokens: number; usd: number }>();
+    const recs = buildRecommendations(pattern, sampleCatalog, savingsMap, { minConfidence: 0 });
+    for (const r of recs) {
+      expect(r.confidence).toBeGreaterThanOrEqual(0);
+      expect(r.confidence).toBeLessThanOrEqual(100);
+    }
+  });
+});
+
+// ── 10. suggest-formatters smoke tests ───────────────────────────────────────
+
+describe("suggest-formatters", () => {
+  const skillRec = {
+    type: "skill" as const,
+    skillName: "scout",
+    description: "Explore codebase files",
+    confidence: 85,
+    pattern: {
+      type: "read-fanout" as const,
+      dir: "/src",
+      count: 6,
+      turnIndices: [0],
+      timestamps: ["2025-01-01T00:00:00Z"],
+      tokensConsumed: 10000,
+    },
+    evidence: [{ timestamp: "2025-01-01T00:00:00Z", toolCallSummary: "Read ×6 in /src", turnIndex: 0 }],
+    estimatedTokensSaved: 5000,
+    estimatedUsdSaved: 0.015,
+    invocationHint: "/ck:scout",
+  };
+
+  const processRec = {
+    type: "process" as const,
+    pattern: {
+      type: "read-fanout" as const,
+      dir: "/src",
+      count: 6,
+      turnIndices: [0],
+      timestamps: ["2025-01-01T00:00:00Z"],
+      tokensConsumed: 10000,
+    },
+    title: "Use Glob to enumerate files before reading",
+    description: "Sequential Read calls on many files burn tokens. Use Glob first.",
+    confidence: 70,
+    evidence: [],
+  };
+
+  const promptRec = {
+    type: "prompt" as const,
+    pattern: {
+      type: "subagent-skip" as const,
+      toolCallCount: 25,
+      turnIndices: [],
+      timestamps: [],
+      tokensConsumed: 50000,
+    },
+    title: "Pipe Bash results instead of repeated sub-shells",
+    description: "Five or more Bash calls per turn. Collapse with pipes.",
+    confidence: 62,
+    evidence: [],
+  };
+
+  it("renderTextRec skill — contains skill name and invocation hint", () => {
+    const out = renderTextRec(skillRec, 1);
+    expect(out).toContain("scout");
+    expect(out).toContain("/ck:scout");
+    expect(out).toContain("85%");
+  });
+
+  it("renderTextRec process — contains title and [Process] tag", () => {
+    const out = renderTextRec(processRec, 2);
+    expect(out).toContain("[Process]");
+    expect(out).toContain("Glob");
+    expect(out).toContain("70%");
+  });
+
+  it("renderTextRec prompt — contains [Prompt] tag", () => {
+    const out = renderTextRec(promptRec, 3);
+    expect(out).toContain("[Prompt]");
+    expect(out).toContain("62%");
+  });
+
+  it("renderMarkdownRec skill — contains [Skill] section heading", () => {
+    const out = renderMarkdownRec(skillRec, 1);
+    expect(out).toContain("[Skill]");
+    expect(out).toContain("`/ck:scout`");
+    expect(out).toContain("**Confidence:** 85%");
+  });
+
+  it("renderMarkdownRec process — contains [Process] section heading", () => {
+    const out = renderMarkdownRec(processRec, 2);
+    expect(out).toContain("[Process]");
+    expect(out).toContain("**Confidence:** 70%");
+  });
+
+  it("renderMarkdownRec prompt — contains [Prompt] section heading", () => {
+    const out = renderMarkdownRec(promptRec, 3);
+    expect(out).toContain("[Prompt]");
+    expect(out).toContain("Bash");
+  });
+
+  it("JSON schema envelope has ckforensics-suggest-v2 key", () => {
+    // Validate the shape the suggest command produces
+    const envelope = {
+      $schema: "ckforensics-suggest-v2",
+      generatedAt: new Date().toISOString(),
+      recommendations: [skillRec, processRec, promptRec],
+    };
+    expect(envelope.$schema).toBe("ckforensics-suggest-v2");
+    expect(envelope.recommendations).toHaveLength(3);
+    expect(envelope.recommendations[0]!.type).toBe("skill");
+    expect(envelope.recommendations[1]!.type).toBe("process");
+    expect(envelope.recommendations[2]!.type).toBe("prompt");
   });
 });

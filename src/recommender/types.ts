@@ -101,7 +101,9 @@ export interface SkillCatalogEntry {
 
 // ── Recommendation ─────────────────────────────────────────────────────────────
 
-export interface Recommendation {
+/** Skill-based recommendation: a specific ClaudeKit skill to invoke. */
+export interface SkillRecommendation {
+  type: "skill";
   /** Skill name, e.g. "scout". */
   skillName: string;
   /** One-line skill description. */
@@ -119,6 +121,51 @@ export interface Recommendation {
   /** Copy-pastable invocation hint. */
   invocationHint: string;
 }
+
+/** Process-level advice: workflow or tooling habit change (no ClaudeKit required). */
+export interface ProcessRecommendation {
+  type: "process";
+  /** Pattern that triggered this advice. */
+  pattern: Pattern;
+  /** Short label, e.g. "Use Glob instead of sequential Read". */
+  title: string;
+  /** 1-2 sentences explaining the pattern and the alternative. */
+  description: string;
+  /** Confidence 0-100. */
+  confidence: number;
+  /** Turn-level evidence supporting this advice. */
+  evidence: MatchEvidence[];
+}
+
+/** Prompt-level advice: context management, session hygiene. */
+export interface PromptRecommendation {
+  type: "prompt";
+  /** Pattern that triggered this advice. */
+  pattern: Pattern;
+  /** Short label, e.g. "Checkpoint context periodically". */
+  title: string;
+  /** 1-2 sentences explaining the issue and the fix. */
+  description: string;
+  /** Confidence 0-100. */
+  confidence: number;
+  /** Turn-level evidence supporting this advice. */
+  evidence: MatchEvidence[];
+}
+
+/**
+ * Discriminated union of all recommendation types.
+ * Type guard: use `rec.type === "skill"` etc.
+ */
+export type Recommendation =
+  | SkillRecommendation
+  | ProcessRecommendation
+  | PromptRecommendation;
+
+/**
+ * @deprecated Use SkillRecommendation directly.
+ * Kept as an alias so legacy import `Recommendation` still resolves the full union.
+ */
+export type { SkillRecommendation as LegacySkillRecommendation };
 
 // ── Skill usage record ─────────────────────────────────────────────────────────
 

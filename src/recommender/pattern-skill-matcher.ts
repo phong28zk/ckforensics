@@ -2,142 +2,47 @@
  * Pattern-to-skill matcher: scores candidate skills for each detected pattern.
  *
  * Strategy:
- *   1. Each pattern type maps to a primary skill name heuristic table.
+ *   1. Each pattern type maps to a primary skill name heuristic table (scorer).
  *   2. Keyword overlap between pattern metadata and skill.keywords boosts score.
- *   3. Confidence 0-100; threshold enforcement is the caller's responsibility.
+ *   3. Process/prompt advice from advice bank is always appended (no catalog needed).
+ *   4. Confidence 0-100; threshold enforcement is the caller's responsibility.
+ *
+ * Scoring helpers live in pattern-skill-scorer.ts.
+ * Advice bank data lives in process-advice-bank.ts.
  */
 
-import type { Pattern, SkillCatalogEntry, Recommendation, MatchEvidence } from "./types.ts";
-
-// ── Heuristic table ────────────────────────────────────────────────────────────
-
-/** Primary expected skill names per pattern type (highest priority). */
-const PATTERN_SKILL_HINTS: Record<string, string[]> = {
-  "read-fanout":       ["scout", "repomix", "gkg", "graphify"],
-  "test-loop":         ["test", "web-testing"],
-  "manual-diff-cycle": ["code-review", "fix", "debug"],
-  "grep-walk":         ["scout", "gkg", "repomix"],
-  "subagent-skip":     ["cook", "plan", "sequential-thinking"],
-};
-
-/** Keywords associated with each pattern type for catalog matching. */
-const PATTERN_KEYWORDS: Record<string, string[]> = {
-  "read-fanout":       ["read", "explore", "discover", "codebase", "files", "search", "scout"],
-  "test-loop":         ["test", "bun", "jest", "vitest", "pytest", "coverage", "tdd"],
-  "manual-diff-cycle": ["diff", "review", "edit", "patch", "fix", "code-review"],
-  "grep-walk":         ["grep", "search", "find", "explore", "discover", "codebase"],
-  "subagent-skip":     ["plan", "subagent", "delegate", "orchestrate", "cook", "agent"],
-};
-
-/** Copy-pastable invocation hints per skill name. */
-const INVOCATION_HINTS: Record<string, string> = {
-  scout:               "/ck:scout",
-  repomix:             "/ck:repomix",
-  gkg:                 "/ck:gkg",
-  graphify:            "/ck:graphify",
-  test:                "/ck:test",
-  "web-testing":       "/ck:web-testing",
-  "code-review":       "/ck:code-review",
-  fix:                 "/ck:fix",
-  debug:               "/ck:debug",
-  cook:                "/ck:cook",
-  plan:                "/ck:plan",
-  "sequential-thinking": "/ck:sequential-thinking",
-};
-
-// ── Scoring ───────────────────────────────────────────────────────────────────
-
-/**
- * Compute keyword overlap score (0-50) between pattern keywords and skill keywords.
- * Normalized to 0-50 range to leave room for heuristic bonus.
- */
-function keywordOverlapScore(
-  patternType: string,
-  skill: SkillCatalogEntry
-): number {
-  const patternKws = new Set(
-    (PATTERN_KEYWORDS[patternType] ?? []).map((k) => k.toLowerCase())
-  );
-  const skillKws = [
-    ...skill.keywords.map((k) => k.toLowerCase()),
-    ...skill.name.toLowerCase().split(/[-_]/),
-  ];
-
-  let matches = 0;
-  for (const kw of skillKws) {
-    if (patternKws.has(kw)) matches++;
-  }
-
-  // Also check description words
-  const descWords = skill.description.toLowerCase().split(/\W+/);
-  for (const w of descWords) {
-    if (w.length > 3 && patternKws.has(w)) matches++;
-  }
-
-  return Math.min(50, matches * 12);
-}
-
-/**
- * Compute heuristic bonus (0-50) based on primary skill name table.
- */
-function heuristicBonus(patternType: string, skillName: string): number {
-  const hints = PATTERN_SKILL_HINTS[patternType] ?? [];
-  const idx = hints.indexOf(skillName);
-  if (idx === -1) return 0;
-  // First match = 50, second = 35, third = 20, rest = 10
-  return [50, 35, 20, 10][idx] ?? 10;
-}
-
-/** Build MatchEvidence array from pattern (up to 2 entries). */
-function buildEvidence(pattern: Pattern): MatchEvidence[] {
-  const evidence: MatchEvidence[] = [];
-  const limit = Math.min(2, pattern.turnIndices.length);
-
-  for (let i = 0; i < limit; i++) {
-    const ts = pattern.timestamps[i] ?? "";
-    const idx = pattern.turnIndices[i] ?? 0;
-    let summary: string;
-
-    switch (pattern.type) {
-      case "read-fanout":
-        summary = `Read ×${pattern.count} in ${pattern.dir}`;
-        break;
-      case "test-loop":
-        summary = `Bash test: ${pattern.commands[i] ?? "test runner"}`;
-        break;
-      case "manual-diff-cycle":
-        summary = `Read→Edit→Read cycle on ${pattern.filePath}`;
-        break;
-      case "grep-walk":
-        summary = `Grep+Read pair #${i + 1}`;
-        break;
-      case "subagent-skip":
-        summary = `${pattern.toolCallCount} tool calls without subagent delegation`;
-        break;
-    }
-
-    evidence.push({ timestamp: ts, toolCallSummary: summary, turnIndex: idx });
-  }
-
-  return evidence;
-}
+import type {
+  Pattern,
+  SkillCatalogEntry,
+  Recommendation,
+  SkillRecommendation,
+  ProcessRecommendation,
+  PromptRecommendation,
+  MatchEvidence,
+} from "./types.ts";
+import {
+  INVOCATION_HINTS,
+  keywordOverlapScore,
+  heuristicBonus,
+  buildEvidence,
+} from "./pattern-skill-scorer.ts";
+import { ADVICE_BANK } from "./process-advice-bank.ts";
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export interface MatchOptions {
   /** Minimum confidence threshold 0-100. Default 0 (caller filters). */
   minConfidence?: number;
-  /** Max recommendations per pattern. Default 3. */
+  /** Max skill recommendations per pattern. Default 3. */
   topK?: number;
 }
 
 /**
  * Score all catalog skills against a detected pattern and return ranked candidates.
  *
- * @param pattern   Detected behavioral pattern.
- * @param catalog   All skill entries from skill_catalog.
- * @param model     Model name for cost estimates (passed to savings estimator).
- * @param opts      Filtering options.
+ * @param pattern  Detected behavioral pattern.
+ * @param catalog  All skill entries from skill_catalog.
+ * @param opts     Filtering options.
  */
 export function matchSkillsForPattern(
   pattern: Pattern,
@@ -166,7 +71,11 @@ export function matchSkillsForPattern(
 
 /**
  * Build full Recommendation objects from a pattern + catalog.
- * Incorporates savings data provided by caller (savings-estimator).
+ *
+ * Returns a mixed list: SkillRecommendation (catalog hits) + ProcessRecommendation
+ * + PromptRecommendation (advice bank — always populated, no catalog required).
+ *
+ * Non-ClaudeKit users with an empty catalog still receive process/prompt advice.
  */
 export function buildRecommendations(
   pattern: Pattern,
@@ -174,20 +83,23 @@ export function buildRecommendations(
   savingsMap: Map<string, { tokens: number; usd: number }>,
   opts: MatchOptions = {}
 ): Recommendation[] {
+  const { minConfidence = 0 } = opts;
   const matches = matchSkillsForPattern(pattern, catalog, opts);
   const catalogByName = new Map(catalog.map((e) => [e.name, e]));
 
-  return matches.map((m) => {
+  // ── Skill recommendations ──────────────────────────────────────────────────
+  const skillRecs: SkillRecommendation[] = matches.map((m) => {
     const entry = catalogByName.get(m.skillName);
     const savings = savingsMap.get(m.skillName) ?? { tokens: 0, usd: 0 };
-    // Skill names from catalog may already include "ck:" prefix (e.g. "ck:test").
-    // Strip it before prepending "/ck:" to avoid double prefix like "/ck:ck:test".
+    // Strip any "ck:" prefix to avoid double prefix "/ck:ck:foo".
     const bareName = m.skillName.replace(/^ckm?:/, "");
-    const hint = INVOCATION_HINTS[m.skillName]
-      ?? INVOCATION_HINTS[bareName]
-      ?? `/ck:${bareName}`;
+    const hint =
+      INVOCATION_HINTS[m.skillName] ??
+      INVOCATION_HINTS[bareName] ??
+      `/ck:${bareName}`;
 
     return {
+      type: "skill",
       skillName: m.skillName,
       description: entry?.description ?? "",
       confidence: m.confidence,
@@ -196,6 +108,45 @@ export function buildRecommendations(
       estimatedTokensSaved: savings.tokens,
       estimatedUsdSaved: savings.usd,
       invocationHint: hint,
-    } satisfies Recommendation;
+    } satisfies SkillRecommendation;
   });
+
+  // ── Process + prompt advice from bank ─────────────────────────────────────
+  const bankEntries = ADVICE_BANK[pattern.type] ?? [];
+  const evidence = buildEvidence(pattern);
+
+  // Scale baseline confidence by pattern "strength" (token cost as proxy).
+  // Patterns with >10k tokens consumed get a small boost (up to +8).
+  const strengthBoost =
+    pattern.tokensConsumed > 10_000 ? 8
+    : pattern.tokensConsumed > 5_000 ? 4
+    : 0;
+
+  const adviceRecs: Array<ProcessRecommendation | PromptRecommendation> = bankEntries
+    .map((entry) => {
+      const confidence = Math.min(100, entry.baseConfidence + strengthBoost);
+      if (confidence < minConfidence) return null;
+
+      if (entry.adviceType === "process") {
+        return {
+          type: "process",
+          pattern,
+          title: entry.title,
+          description: entry.description,
+          confidence,
+          evidence,
+        } satisfies ProcessRecommendation;
+      }
+      return {
+        type: "prompt",
+        pattern,
+        title: entry.title,
+        description: entry.description,
+        confidence,
+        evidence,
+      } satisfies PromptRecommendation;
+    })
+    .filter((r): r is ProcessRecommendation | PromptRecommendation => r !== null);
+
+  return [...skillRecs, ...adviceRecs];
 }
