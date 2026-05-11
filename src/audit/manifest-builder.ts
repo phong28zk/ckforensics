@@ -11,6 +11,7 @@ import { loadSession } from "./session-loader.ts";
 import { aggregateChanges } from "./change-aggregator.ts";
 import { buildReasonMap, attachReasons } from "./reasoning-correlator.ts";
 import { trackSubagents, attachParentAgentIds } from "./subagent-tracker.ts";
+import { computeSubagentCosts } from "./subagent-cost.ts";
 import type { AssistantEvent } from "../parsers/event-types.ts";
 import type { UsageTokens } from "../parsers/event-content-types.ts";
 
@@ -27,6 +28,7 @@ import type { UsageTokens } from "../parsers/event-content-types.ts";
  *   5. trackSubagents   — detect Task/Agent spans, build parent map
  *   6. attachParentAgentIds — tag EditOps with parent span id
  *   7. computeTokenTotals — sum usage across all assistant events
+ *   8. computeSubagentCosts — per-subagent cost attribution tree
  *
  * @throws Error if sessionId not found in DB.
  */
@@ -49,6 +51,9 @@ export function buildManifest(db: Database, sessionId: string): SessionManifest 
   const tokenTotals = computeTokenTotals(events);
   const estimatedCostUsd = computeCostUsd(tokenTotals, session.model);
 
+  // Step 8: per-subagent cost attribution tree
+  const subagentCosts = computeSubagentCosts(events, spans, session.model);
+
   return {
     session,
     events,
@@ -56,6 +61,7 @@ export function buildManifest(db: Database, sessionId: string): SessionManifest 
     subagentSpans: spans,
     tokenTotals,
     estimatedCostUsd,
+    subagentCosts,
   };
 }
 

@@ -8,17 +8,19 @@
  */
 
 import type { Command } from "commander";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, statSync, accessSync, constants, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { openDb, closeDb } from "../../store/db.ts";
 import { getCurrentVersion, latestVersion } from "../../store/migration-runner.ts";
+import { resolveLogDir } from "../../lib/log-path-resolver.ts";
 import { emitJson, renderKv } from "../output-formatter.ts";
 import { green, red, yellow, bold } from "../color.ts";
 
 interface GlobalOptions {
   json: boolean;
   db: string;
+  logDir: string;
 }
 
 interface DiagnosticItem {
@@ -114,6 +116,58 @@ export function registerDoctorCommand(program: Command): void {
         });
       } catch {
         items.push({ check: "DB directory", status: "warn", value: "stat failed" });
+      }
+
+      // 7. Log directory exists and is writable
+      const logDir = globals.logDir ?? resolveLogDir();
+      const logDirExists = existsSync(logDir);
+      let logDirWritable = false;
+      if (logDirExists) {
+        try {
+          accessSync(logDir, constants.W_OK);
+          logDirWritable = true;
+        } catch { /* not writable */ }
+      }
+
+      if (!logDirExists) {
+        items.push({ check: "Log directory", status: "warn", value: `not found: ${logDir}` });
+      } else if (!logDirWritable) {
+        items.push({ check: "Log directory", status: "error", value: `not writable: ${logDir}` });
+      } else {
+        items.push({ check: "Log directory", status: "ok", value: logDir });
+      }
+
+      // 8. Today's log activity (size + last modified)
+      if (logDirExists && logDirWritable) {
+        try {
+          const today = new Date();
+          const yyyy = today.getFullYear();
+          const mm = String(today.getMonth() + 1).padStart(2, "0");
+          const dd = String(today.getDate()).padStart(2, "0");
+          const todayStr = `${yyyy}-${mm}-${dd}`;
+
+          // Find any log files modified today
+          const files = readdirSync(logDir).filter((f) => f.includes(todayStr));
+          if (files.length === 0) {
+            items.push({ check: "Log activity", status: "warn", value: "no logs written today" });
+          } else {
+            // Report size of most recently modified today's log
+            const stats = files.map((f) => {
+              const s = statSync(join(logDir, f));
+              return { name: f, size: s.size, mtime: s.mtime };
+            }).sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+
+            const latest = stats[0]!;
+            const sizeKb = (latest.size / 1024).toFixed(1);
+            items.push({
+              check: "Log activity",
+              status: "ok",
+              value: `${latest.name} (${sizeKb} KB, modified ${latest.mtime.toISOString()})`,
+            });
+          }
+        } catch {
+          items.push({ check: "Log activity", status: "warn", value: "could not read log dir" });
+        }
       }
 
       // Determine overall status

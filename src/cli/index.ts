@@ -20,6 +20,7 @@
 import { Command } from "commander";
 import { disableColor } from "./color.ts";
 import { resolveDbPath } from "../store/path-resolver.ts";
+import { resolveLogDir } from "../lib/log-path-resolver.ts";
 import { registerIngestCommand } from "./commands/ingest.ts";
 import { registerSummaryCommand } from "./commands/summary.ts";
 import { registerSessionsCommand } from "./commands/sessions.ts";
@@ -42,15 +43,18 @@ program
     "Forensic analysis and audit tool for Claude Code session logs.\n" +
     "Ingests JSONL sessions, queries usage, and exports reports."
   )
-  .version("0.2.0", "-V, --version", "print version and exit")
+  .version("0.2.1", "-V, --version", "print version and exit")
   // Global flags — available on all subcommands via program.opts()
   .option("--db <path>", "override SQLite database path", resolveDbPath())
   .option("--no-color", "disable ANSI colour output")
   .option("-v, --verbose", "verbose logging to stderr", false)
+  // Commander requires single-char short flags; --debug has no short alias.
+  .option("--debug", "debug logging (implies --verbose)", false)
+  .option("--log-dir <path>", "override log directory", resolveLogDir())
   .option("--json", "force JSON output (overrides --format)", false)
-  // Apply --no-color as early as possible
+  // Apply --no-color as early as possible; resolve effective log level
   .hook("preAction", (thisCommand) => {
-    const opts = thisCommand.opts<{ color: boolean; json: boolean }>();
+    const opts = thisCommand.opts<{ color: boolean; json: boolean; debug: boolean; verbose: boolean }>();
     if (!opts.color) disableColor();
   });
 

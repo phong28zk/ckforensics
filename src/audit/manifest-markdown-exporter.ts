@@ -11,7 +11,7 @@
  * No ANSI escape codes — plain text only (markdown fenced blocks for diffs).
  */
 
-import type { SessionManifest, FileChange, EditOp, SubagentSpan } from "./manifest-types.ts";
+import type { SessionManifest, FileChange, EditOp, SubagentSpan, SubagentCostNode } from "./manifest-types.ts";
 import { formatDiff } from "./diff-formatter.ts";
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -39,6 +39,11 @@ export function exportManifestMarkdown(manifest: SessionManifest): string {
 
   if (manifest.subagentSpans.length > 0) {
     parts.push(renderSubagentSection(manifest.subagentSpans));
+  }
+
+  const costs = manifest.subagentCosts ?? [];
+  if (costs.length > 0) {
+    parts.push(renderSubagentCostSection(costs));
   }
 
   parts.push(renderFooter());
@@ -188,6 +193,55 @@ function renderSubagentSection(spans: SubagentSpan[]): string {
 
   lines.push("");
   return lines.join("\n");
+}
+
+function renderSubagentCostSection(nodes: SubagentCostNode[]): string {
+  const lines: string[] = [];
+  lines.push("## Subagent Cost Breakdown");
+  lines.push("");
+  lines.push("| Subagent | Description | Tokens | Cost | Tool calls | Duration |");
+  lines.push("|----------|-------------|--------|------|------------|----------|");
+
+  // Sort top-level by cost DESC
+  const sorted = [...nodes].sort((a, b) => (b.costUsd ?? 0) - (a.costUsd ?? 0));
+  for (const node of sorted) {
+    renderCostNode(node, 0, lines);
+  }
+
+  lines.push("");
+  return lines.join("\n");
+}
+
+function renderCostNode(node: SubagentCostNode, depth: number, lines: string[]): void {
+  const indent = depth === 0 ? "" : "  ".repeat(depth - 1) + "└── ";
+  const totalTokens = node.tokens.input + node.tokens.output + node.tokens.cacheRead + node.tokens.cacheCreate;
+  const tokenStr = formatTokenCount(totalTokens);
+  const costStr = node.costUsd !== null ? `$${node.costUsd.toFixed(4)}` : "unknown";
+  const durationStr = node.durationMs !== null ? formatDurationMs(node.durationMs) : "open";
+  const descTrunc = node.description.length > 60
+    ? escapeHtml(node.description.slice(0, 60)) + "…"
+    : escapeHtml(node.description);
+
+  lines.push(
+    `| ${indent}${node.subagentType} | ${descTrunc} | ${tokenStr} | ${costStr} | ${node.childToolCalls} | ${durationStr} |`
+  );
+
+  // Recurse into children (already sorted by cost DESC in buildNode)
+  for (const child of node.children) {
+    renderCostNode(child, depth + 1, lines);
+  }
+}
+
+function formatTokenCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${Math.round(n / 1_000)}k`;
+  return `${n}`;
+}
+
+function formatDurationMs(ms: number): string {
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m${Math.floor((ms % 60_000) / 1000)}s`;
+  return `${Math.floor(ms / 3_600_000)}h${Math.floor((ms % 3_600_000) / 60_000)}m`;
 }
 
 function renderFooter(): string {

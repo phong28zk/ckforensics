@@ -11,11 +11,13 @@ import type { Command } from "commander";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { resolveDataDir } from "../../store/path-resolver.ts";
+import { resolveLogDir } from "../../lib/log-path-resolver.ts";
 import { emitJson, renderKv } from "../output-formatter.ts";
 
 interface GlobalOptions {
   json: boolean;
   db: string;
+  logDir: string;
 }
 
 export function registerPathCommand(program: Command): void {
@@ -25,12 +27,14 @@ export function registerPathCommand(program: Command): void {
     .action(() => {
       const globals = program.opts<GlobalOptions>();
       const dataDir = resolveDataDir();
+      const logDir = globals.logDir ?? resolveLogDir();
       const jsonlDir = join(homedir(), ".claude", "projects");
       const configDir = join(homedir(), ".config", "ckforensics");
 
       const paths = {
         db: globals.db,
         dataDir,
+        logDir,
         jsonlDir,
         configDir,
       };
@@ -44,6 +48,7 @@ export function registerPathCommand(program: Command): void {
         renderKv([
           ["DB", paths.db],
           ["Data dir", paths.dataDir],
+          ["Logs", paths.logDir],
           ["JSONL dir", paths.jsonlDir],
           ["Config dir", paths.configDir],
         ])

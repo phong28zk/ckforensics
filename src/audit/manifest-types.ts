@@ -97,6 +97,36 @@ export interface HydratedEvent {
   event: ParsedEvent;
 }
 
+// ── Subagent cost tree ────────────────────────────────────────────────────────
+
+/**
+ * A tree node representing one subagent dispatch with its recursive cost.
+ * Parent nodes include child costs in their totals (gross, not net).
+ * Children render indented underneath for user visibility.
+ */
+export interface SubagentCostNode {
+  /** Tool-use block ID (matches SubagentSpan.id). */
+  toolUseId: string;
+  /** "Task" | "Agent" */
+  subagentType: string;
+  /** First arg / task description (from inputSummary). */
+  description: string;
+  /** ISO-8601 timestamp when span opened. */
+  startedAt: string;
+  /** ISO-8601 timestamp when span closed (null if still open). */
+  endedAt: string | null;
+  /** Wall-clock duration in milliseconds (null if still open). */
+  durationMs: number | null;
+  /** Gross token counts for this span (INCLUDES nested child tokens). */
+  tokens: { input: number; output: number; cacheRead: number; cacheCreate: number };
+  /** Gross USD cost estimate (INCLUDES nested children; null if model unknown). */
+  costUsd: number | null;
+  /** Count of tool_use blocks inside span (all depths). */
+  childToolCalls: number;
+  /** Nested subagent nodes, sorted by cost DESC. */
+  children: SubagentCostNode[];
+}
+
 /** Top-level manifest assembled from one session. */
 export interface SessionManifest {
   session: SessionInfo;
@@ -110,4 +140,6 @@ export interface SessionManifest {
   tokenTotals: { input: number; output: number; cacheRead: number; cacheCreate: number };
   /** Estimated cost in USD (null if pricing unknown). */
   estimatedCostUsd: number | null;
+  /** Per-subagent cost breakdown tree (empty array if no subagents). */
+  subagentCosts?: SubagentCostNode[];
 }

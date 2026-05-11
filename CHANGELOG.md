@@ -6,6 +6,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-05-11
+
+### Added
+- **Log infrastructure (Phase 11):** XDG-compliant log dir + daily rotation.
+  - Linux: \`~/.local/state/ckforensics/logs/\`
+  - macOS: \`~/Library/Logs/ckforensics/\`
+  - Windows: \`%LOCALAPPDATA%\\ckforensics\\Logs\\\`
+  - \`--verbose\` / \`--debug\` gate levels; default = error only.
+  - \`ckforensics path\` shows log directory; \`doctor\` checks writeability.
+- **Subagent cost forensics:** recursive Agent() / Task() cost breakdown in audit output.
+  - \`## Subagent Cost Breakdown\` table with nested hierarchy, token + USD per node.
+  - Identifies runaway subagents in long-running sessions.
+
+### Fixed
+- Commander option syntax: \`-vv, --debug\` (invalid: short flag > 1 char) -> \`--debug\`.
+- log-path-resolver test expected wrong path (missing \`ckforensics/\` segment).
+
 ## [0.2.0] - 2026-05-11 — Brilliant Tier Release
 
 ### Added

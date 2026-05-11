@@ -14,12 +14,22 @@ import { discoverJsonlFiles } from "../../store/discovery.ts";
 import { ingestFile } from "../../store/ingest.ts";
 import { green, yellow, dim, red } from "../color.ts";
 import { emitJson } from "../output-formatter.ts";
+import { Logger } from "../../lib/logger.ts";
+import type { LogLevel } from "../../lib/logger.ts";
 
 interface IngestOptions {
   watch: boolean;
   json: boolean;
   verbose: boolean;
+  debug: boolean;
   db: string;
+  logDir: string;
+}
+
+function resolveLevel(opts: { verbose: boolean; debug: boolean }): LogLevel {
+  if (opts.debug) return "debug";
+  if (opts.verbose) return "info";
+  return "error";
 }
 
 export function registerIngestCommand(program: Command): void {
@@ -30,25 +40,35 @@ export function registerIngestCommand(program: Command): void {
     .action(async (opts: { watch: boolean }) => {
       const globals = program.opts<IngestOptions>();
       const options = { ...globals, ...opts };
+      const log = new Logger({
+        command: "ingest",
+        level: resolveLevel(options),
+        logDir: options.logDir,
+      });
+
+      log.info("start", { watch: options.watch });
+      const t0 = Date.now();
 
       try {
         if (options.watch) {
-          await runWatchMode(options);
+          await runWatchMode(options, log);
         } else {
-          await runOnce(options);
+          await runOnce(options, log);
         }
+        log.info("done", { durationMs: Date.now() - t0 });
       } catch (err) {
+        log.error("failed", { error: String(err), durationMs: Date.now() - t0 });
         process.stderr.write(red("Error: ") + String(err) + "\n");
         process.exit(2);
       }
     });
 }
 
-async function runOnce(options: IngestOptions): Promise<void> {
+async function runOnce(options: IngestOptions, log: Logger): Promise<void> {
   const db = openDb(options.db);
   runMigrations(db);
   try {
-    const result = await ingestAll(db, options);
+    const result = await ingestAll(db, options, log);
     if (options.json) {
       emitJson(result);
     } else {
@@ -60,14 +80,14 @@ async function runOnce(options: IngestOptions): Promise<void> {
   }
 }
 
-async function runWatchMode(options: IngestOptions): Promise<void> {
+async function runWatchMode(options: IngestOptions, log: Logger): Promise<void> {
   process.stderr.write(dim("Watching for changes (Ctrl+C to stop)…\n"));
   const db = openDb(options.db);
   runMigrations(db);
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    const result = await ingestAll(db, options);
+    const result = await ingestAll(db, options, log);
     if (result.totalInserted > 0) {
       if (options.json) {
         emitJson({ ...result, mode: "watch" });
@@ -92,7 +112,8 @@ interface IngestAllResult {
 
 async function ingestAll(
   db: ReturnType<typeof openDb>,
-  options: IngestOptions
+  options: IngestOptions,
+  log: Logger
 ): Promise<IngestAllResult> {
   const files = await discoverJsonlFiles();
   let filesProcessed = 0;
@@ -107,6 +128,7 @@ async function ingestAll(
         filesProcessed++;
         totalInserted += result.eventsInserted;
         totalRead += result.linesRead;
+        log.debug("file ingested", { path: file.path, eventsInserted: result.eventsInserted });
         if (options.verbose) {
           process.stderr.write(
             dim(`  ${file.path}: +${result.eventsInserted} events\n`)
@@ -114,8 +136,10 @@ async function ingestAll(
         }
       } else {
         filesSkipped++;
+        log.debug("file skipped", { path: file.path });
       }
     } catch (err) {
+      log.error("file ingest failed", { path: file.path, error: String(err) });
       process.stderr.write(
         yellow(`Warning: failed to ingest ${file.path}: ${String(err)}\n`)
       );
