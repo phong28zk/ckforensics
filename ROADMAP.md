@@ -16,6 +16,14 @@
 
 - **Skill Recommender** — analyze session, suggest skills that would have replaced repeated manual tool sequences. Hooks into ClaudeKit skills catalog when present.
 - **Context Map** (X-ray) — visualize what eats tokens in current window; pre-compact simulator; pinning manifest output. Documented as best-effort with ±20% attribution margin.
+- **Log infrastructure** — XDG-compliant per-OS log directory with daily rotation:
+  - Linux: `~/.local/state/ckforensics/logs/`
+  - macOS: `~/Library/Logs/ckforensics/`
+  - Windows: `%LOCALAPPDATA%\ckforensics\Logs\`
+  - Levels: error (default) / info (`-v`) / debug (`-vv`)
+  - File naming: `<command>-YYYY-MM-DD.log` (e.g. `ingest-2026-05-11.log`)
+  - `ckforensics path` will surface log directory
+  - Critical for cron-driven `ingest --watch` users to debug failures
 
 ## v0.3.0+ — Stretch Goals
 

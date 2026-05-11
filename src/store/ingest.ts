@@ -121,38 +121,67 @@ export async function ingestFile(
 
 /**
  * Compute token_usage.cost_usd from session.model pricing for the given sessions.
- * Pricing per million tokens (USD), May 2026:
- *   opus:   input=15,   output=75,   cacheRead=1.50, cacheWrite=18.75
- *   sonnet: input=3,    output=15,   cacheRead=0.30, cacheWrite=3.75
- *   haiku:  input=0.25, output=1.25, cacheRead=0.03, cacheWrite=0.3
+ * Pricing per million tokens (USD), Nov 2025 snapshot — version-aware:
+ *   Opus 4.5+ (4.5/4.6/4.7): input=5,    output=25,   cacheRead=0.50, cacheWrite=6.25
+ *   Opus 4.0/4.1 (legacy):   input=15,   output=75,   cacheRead=1.50, cacheWrite=18.75
+ *   Sonnet 4.x:              input=3,    output=15,   cacheRead=0.30, cacheWrite=3.75
+ *   Haiku 4.5:               input=1,    output=5,    cacheRead=0.10, cacheWrite=1.25
+ *   Haiku 3.5:               input=0.8,  output=4,    cacheRead=0.08, cacheWrite=1.0
+ *   Haiku 3 (legacy):        input=0.25, output=1.25, cacheRead=0.03, cacheWrite=0.30
+ *
+ * Source: https://platform.claude.com/docs/en/about-claude/pricing
+ * Keep in sync with src/lib/model-pricing.ts.
  */
 function backfillCostUsd(db: Database, sessionIds: string[]): void {
   if (sessionIds.length === 0) return;
   const placeholders = sessionIds.map(() => "?").join(",");
+  // SQL helper: returns input pricing rate matching getModelPricing() tiers.
+  // Each pricing column repeats the same CASE chain with different rates.
+  const inputCase = `
+    CASE
+      WHEN LOWER(s.model) LIKE '%opus-4-5%' OR LOWER(s.model) LIKE '%opus-4-6%' OR LOWER(s.model) LIKE '%opus-4-7%' OR LOWER(s.model) LIKE '%opus-5%' THEN 5.0
+      WHEN LOWER(s.model) LIKE '%opus%'   THEN 15.0
+      WHEN LOWER(s.model) LIKE '%sonnet%' THEN 3.0
+      WHEN LOWER(s.model) LIKE '%haiku-4%' THEN 1.0
+      WHEN LOWER(s.model) LIKE '%haiku-3-5%' THEN 0.8
+      WHEN LOWER(s.model) LIKE '%haiku%'  THEN 0.25
+      ELSE 0 END`;
+  const outputCase = `
+    CASE
+      WHEN LOWER(s.model) LIKE '%opus-4-5%' OR LOWER(s.model) LIKE '%opus-4-6%' OR LOWER(s.model) LIKE '%opus-4-7%' OR LOWER(s.model) LIKE '%opus-5%' THEN 25.0
+      WHEN LOWER(s.model) LIKE '%opus%'   THEN 75.0
+      WHEN LOWER(s.model) LIKE '%sonnet%' THEN 15.0
+      WHEN LOWER(s.model) LIKE '%haiku-4%' THEN 5.0
+      WHEN LOWER(s.model) LIKE '%haiku-3-5%' THEN 4.0
+      WHEN LOWER(s.model) LIKE '%haiku%'  THEN 1.25
+      ELSE 0 END`;
+  const cacheReadCase = `
+    CASE
+      WHEN LOWER(s.model) LIKE '%opus-4-5%' OR LOWER(s.model) LIKE '%opus-4-6%' OR LOWER(s.model) LIKE '%opus-4-7%' OR LOWER(s.model) LIKE '%opus-5%' THEN 0.5
+      WHEN LOWER(s.model) LIKE '%opus%'   THEN 1.5
+      WHEN LOWER(s.model) LIKE '%sonnet%' THEN 0.3
+      WHEN LOWER(s.model) LIKE '%haiku-4%' THEN 0.1
+      WHEN LOWER(s.model) LIKE '%haiku-3-5%' THEN 0.08
+      WHEN LOWER(s.model) LIKE '%haiku%'  THEN 0.03
+      ELSE 0 END`;
+  const cacheWriteCase = `
+    CASE
+      WHEN LOWER(s.model) LIKE '%opus-4-5%' OR LOWER(s.model) LIKE '%opus-4-6%' OR LOWER(s.model) LIKE '%opus-4-7%' OR LOWER(s.model) LIKE '%opus-5%' THEN 6.25
+      WHEN LOWER(s.model) LIKE '%opus%'   THEN 18.75
+      WHEN LOWER(s.model) LIKE '%sonnet%' THEN 3.75
+      WHEN LOWER(s.model) LIKE '%haiku-4%' THEN 1.25
+      WHEN LOWER(s.model) LIKE '%haiku-3-5%' THEN 1.0
+      WHEN LOWER(s.model) LIKE '%haiku%'  THEN 0.3
+      ELSE 0 END`;
+
   db.run(
     `UPDATE token_usage AS tu
      SET cost_usd = (
        SELECT
-         (tu.input * CASE
-            WHEN LOWER(s.model) LIKE '%opus%'   THEN 15.0
-            WHEN LOWER(s.model) LIKE '%sonnet%' THEN 3.0
-            WHEN LOWER(s.model) LIKE '%haiku%'  THEN 0.25
-            ELSE 0 END
-          + tu.output * CASE
-            WHEN LOWER(s.model) LIKE '%opus%'   THEN 75.0
-            WHEN LOWER(s.model) LIKE '%sonnet%' THEN 15.0
-            WHEN LOWER(s.model) LIKE '%haiku%'  THEN 1.25
-            ELSE 0 END
-          + tu.cache_read * CASE
-            WHEN LOWER(s.model) LIKE '%opus%'   THEN 1.5
-            WHEN LOWER(s.model) LIKE '%sonnet%' THEN 0.3
-            WHEN LOWER(s.model) LIKE '%haiku%'  THEN 0.03
-            ELSE 0 END
-          + tu.cache_create * CASE
-            WHEN LOWER(s.model) LIKE '%opus%'   THEN 18.75
-            WHEN LOWER(s.model) LIKE '%sonnet%' THEN 3.75
-            WHEN LOWER(s.model) LIKE '%haiku%'  THEN 0.3
-            ELSE 0 END
+         (tu.input        * ${inputCase}
+        + tu.output       * ${outputCase}
+        + tu.cache_read   * ${cacheReadCase}
+        + tu.cache_create * ${cacheWriteCase}
          ) / 1000000.0
        FROM sessions s WHERE s.id = tu.session_id
      )

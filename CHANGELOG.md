@@ -6,6 +6,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-05-11
+
+### Fixed
+- Cost calculation for Opus 4.5/4.6/4.7 was 3× too high (used legacy Opus 4.0/4.1 rates).
+  Updated to Anthropic's Nov 2025 published pricing: Opus 4.5+ at $5/$25 input/output
+  (was $15/$75), cache_read $0.50 (was $1.50), cache_write $6.25 (was $18.75).
+- Haiku 4.5 pricing was 4× too low (used Haiku 3 rates).
+- Added version-aware regex matching in `getModelPricing()` so Opus 4.1 keeps legacy
+  rates while 4.5+ uses new rates.
+
+### Added
+- `summary` output footnote clarifying cost is API-rate equivalent (subscription users
+  see flat fee).
+- `src/lib/__tests__/model-pricing.test.ts` covers all model variants.
+- README "About cost numbers" section explaining ckforensics vs CC live cost vs
+  subscription billing.
+
 ## [0.1.0] - TBD
 
 ### Added

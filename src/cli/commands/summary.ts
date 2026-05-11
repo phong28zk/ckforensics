@@ -13,7 +13,7 @@ import { runMigrations } from "../../store/migration-runner.ts";
 import { getSummary } from "../queries/summary-query.ts";
 import { summaryToMarkdown } from "../exporters/markdown-exporter.ts";
 import { emitJson, renderKv } from "../output-formatter.ts";
-import { red, bold, cyan } from "../color.ts";
+import { red, bold, cyan, dim } from "../color.ts";
 
 interface SummaryOptions {
   days: string;
@@ -67,10 +67,14 @@ export function registerSummaryCommand(program: Command): void {
             ["Output tokens", summary.totalOutputTokens.toLocaleString()],
             ["Cache read", summary.totalCacheRead.toLocaleString()],
             ["Total tokens", summary.totalTokens.toLocaleString()],
-            ["Estimated cost", cost],
+            ["Estimated cost*", cost],
             ["Files touched", String(summary.filesTouched)],
             ["Edit operations", String(summary.editOps)],
           ])
+        );
+        process.stdout.write(
+          dim("\n* API-rate equivalent (Nov 2025 prices). Subscription users (Pro/Max)\n" +
+              "  pay flat plan fee — use this as 'value extracted', not actual billing.\n")
         );
       } finally {
         closeDb(db);

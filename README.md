@@ -37,30 +37,56 @@ curl -L https://github.com/phong28zk/ckforensics/releases/latest/download/ckfore
   -o /usr/local/bin/ckforensics && chmod +x /usr/local/bin/ckforensics
 ```
 
-Platforms: `linux-x64`, `linux-arm64`, `macos-x64`, `macos-arm64`, `windows-x64`
+Platforms: `linux-x64`, `linux-arm64`, `macos-arm64` (Apple Silicon), `windows-x64`
+
+> Intel Mac users: build from source — `bun build --compile --target=bun-darwin-x64 src/cli/index.ts --outfile ckforensics`
 
 ---
 
 ## Quick Start
 
 ```bash
-# 1. Ingest all sessions from default Claude Code path
+# 1. Ingest all sessions from ~/.claude/projects/
 ckforensics ingest
 
-# 2. Summarize recent sessions
-ckforensics summary --last 7d
+# 2. Summarize recent sessions (default 7 days)
+ckforensics summary
+ckforensics summary --days 1          # today
+ckforensics summary --days 30         # month
 
-# 3. Audit a session for leaked secrets
-ckforensics audit --session <session-id>
+# 3. List recent sessions
+ckforensics sessions --limit 10
 
-# 4. Redact and export a session as Markdown
-ckforensics export --session <session-id> --format markdown --redact
+# 4. Audit the most recent session (markdown manifest)
+ckforensics audit --last
+ckforensics audit <session-id> --out review.md
 
-# 5. Health check (verify DB integrity + schema version)
+# 5. Redact secrets from a file before sharing
+ckforensics redact review.md --in-place
+
+# 6. Export for scripting
+ckforensics export summary --format json | jq
+ckforensics export sessions --format csv --out sessions.csv
+
+# 7. Health check
 ckforensics doctor
 ```
 
-> Sessions are stored in `~/.ckforensics/db.sqlite` (mode `0600`). Nothing leaves your machine.
+> DB stored at XDG-compliant path (mode `0600`):
+> - Linux: `~/.local/share/ckforensics/store.db`
+> - macOS: `~/Library/Application Support/ckforensics/store.db`
+> - Windows: `%APPDATA%\ckforensics\store.db`
+>
+> Nothing leaves your machine. Run `ckforensics path` to see resolved paths.
+
+### About cost numbers
+
+Cost shown is **API-rate equivalent** computed from token counts × Anthropic published prices ([Nov 2025 snapshot](https://platform.claude.com/docs/en/about-claude/pricing)).
+
+- **API users:** approximates your actual bill (±10-30% for cache-pricing edge cases)
+- **Subscription users (Pro / Max / Team):** flat plan fee covers this; treat the number as **"value extracted"** from your subscription
+
+Example: a 14h Opus 4.7 session showing `$166` means you'd pay ~$166 at API rates — your $100/mo Max plan covers it with positive ROI.
 
 ---
 
@@ -77,12 +103,12 @@ ckforensics doctor
 | Feature | ckforensics | ccusage | Native CC |
 |---------|:-----------:|:-------:|:---------:|
 | Local SQLite storage | ✅ | ✅ | ❌ |
+| Version-aware cost pricing | ✅ | 🟡 | ✅ (live only) |
 | Token usage analytics | ✅ | ✅ | ❌ |
 | Secret redaction (9 rules) | ✅ | ❌ | ❌ |
-| Session audit trail | ✅ | ❌ | ❌ |
-| Subagent tracking | ✅ | ❌ | ❌ |
-| Markdown / JSON export | ✅ | ❌ | ❌ |
-| Diff between sessions | ✅ | ❌ | ❌ |
+| Session change manifest (diff + reasoning) | ✅ | ❌ | ❌ |
+| Subagent attribution | ✅ | ❌ | ❌ |
+| Markdown / JSON / CSV export | ✅ | ❌ | ❌ |
 | Offline / no telemetry | ✅ | ✅ | ✅ |
 | Cross-platform binaries | ✅ | ❌ | ✅ |
 
