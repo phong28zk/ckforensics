@@ -46,6 +46,13 @@ docs/        — Architecture, threat model, schema reference
 - **Error handling** — all async paths use try/catch. No silent failures.
 - **No telemetry** — do not add any network calls. ckforensics is local-only by design.
 
+### Cross-platform Gotchas (Windows CI will catch these)
+
+- **❌ `new URL(...).pathname`** → returns `/D:/...` on Win32 (leading slash, forward separators) → unusable by `fs` APIs. **✅ Use `fileURLToPath(new URL(...))`** from `node:url`.
+- **❌ Hardcoded `/` in path assertions** → fails on Win32 where `path.join` produces `\`. **✅ Normalise with `s.replace(/\\/g, "/")`** before comparing.
+- **❌ Strict perf thresholds in CI tests** (e.g. `<10ms`) → Windows runners have higher jitter. **✅ Use generous budgets (100ms+)** or skip perf tests on CI via `it.skipIf(process.env.CI)`.
+- **❌ `rmSync` immediately after `closeDb`** → SQLite mmap release is delayed on Windows. **✅ Wrap in 5x retry loop with 200ms backoff.**
+
 ---
 
 ## Commit Convention
