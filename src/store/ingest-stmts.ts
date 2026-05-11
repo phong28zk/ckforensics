@@ -14,6 +14,7 @@ export interface IngestStmts {
   insertEvent: ReturnType<Database["prepare"]>;
   insertToolCall: ReturnType<Database["prepare"]>;
   insertTokenUsage: ReturnType<Database["prepare"]>;
+  insertFileTouched: ReturnType<Database["prepare"]>;
 }
 
 /**
@@ -66,6 +67,15 @@ export function prepareIngestStmts(db: Database): IngestStmts {
       `INSERT OR IGNORE INTO token_usage
          (event_id, session_id, input, output, cache_read, cache_create)
        VALUES ($eventId, $sessionId, $input, $output, $cacheRead, $cacheCreate)`
+    ),
+
+    // Files touched row: one per (event, path) tool call edit/write.
+    // No explicit idempotency — same event re-ingested produces same rows; we
+    // rely on event-level idempotency upstream (events.INSERT OR IGNORE).
+    insertFileTouched: db.prepare(
+      `INSERT INTO files_touched
+         (event_id, session_id, path, action, lines_added, lines_removed)
+       VALUES ($eventId, $sessionId, $path, $action, $linesAdded, $linesRemoved)`
     ),
   };
 }

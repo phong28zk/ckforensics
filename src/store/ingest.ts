@@ -23,6 +23,7 @@ import { computeEventId } from "./event-id-hasher.ts";
 import { IngestStateTracker } from "./ingest-state-tracker.ts";
 import { readLinesFromOffset } from "./ingest-file-reader.ts";
 import { insertAssistantDerived } from "./ingest-derived-rows.ts";
+import { insertFilesTouched } from "./ingest-files-touched.ts";
 import { prepareIngestStmts } from "./ingest-stmts.ts";
 export type { IngestStmts } from "./ingest-stmts.ts";
 
@@ -107,10 +108,57 @@ export async function ingestFile(
   // Merge accumulated session metadata in one final transaction
   flushSessions(db, stmts, sessions);
 
+  // Backfill cost_usd for token_usage rows of sessions touched by this ingest
+  backfillCostUsd(db, Array.from(sessions.keys()));
+
   db.transaction(() => { st.saveOffset(filePath, currentOffset); })();
   if (ownTracker) st.finalize();
 
   return { linesRead, eventsInserted, finalOffset: currentOffset };
+}
+
+// ── Cost backfill ─────────────────────────────────────────────────────────────
+
+/**
+ * Compute token_usage.cost_usd from session.model pricing for the given sessions.
+ * Pricing per million tokens (USD), May 2026:
+ *   opus:   input=15,   output=75,   cacheRead=1.50, cacheWrite=18.75
+ *   sonnet: input=3,    output=15,   cacheRead=0.30, cacheWrite=3.75
+ *   haiku:  input=0.25, output=1.25, cacheRead=0.03, cacheWrite=0.3
+ */
+function backfillCostUsd(db: Database, sessionIds: string[]): void {
+  if (sessionIds.length === 0) return;
+  const placeholders = sessionIds.map(() => "?").join(",");
+  db.run(
+    `UPDATE token_usage AS tu
+     SET cost_usd = (
+       SELECT
+         (tu.input * CASE
+            WHEN LOWER(s.model) LIKE '%opus%'   THEN 15.0
+            WHEN LOWER(s.model) LIKE '%sonnet%' THEN 3.0
+            WHEN LOWER(s.model) LIKE '%haiku%'  THEN 0.25
+            ELSE 0 END
+          + tu.output * CASE
+            WHEN LOWER(s.model) LIKE '%opus%'   THEN 75.0
+            WHEN LOWER(s.model) LIKE '%sonnet%' THEN 15.0
+            WHEN LOWER(s.model) LIKE '%haiku%'  THEN 1.25
+            ELSE 0 END
+          + tu.cache_read * CASE
+            WHEN LOWER(s.model) LIKE '%opus%'   THEN 1.5
+            WHEN LOWER(s.model) LIKE '%sonnet%' THEN 0.3
+            WHEN LOWER(s.model) LIKE '%haiku%'  THEN 0.03
+            ELSE 0 END
+          + tu.cache_create * CASE
+            WHEN LOWER(s.model) LIKE '%opus%'   THEN 18.75
+            WHEN LOWER(s.model) LIKE '%sonnet%' THEN 3.75
+            WHEN LOWER(s.model) LIKE '%haiku%'  THEN 0.3
+            ELSE 0 END
+         ) / 1000000.0
+       FROM sessions s WHERE s.id = tu.session_id
+     )
+     WHERE tu.session_id IN (${placeholders})`,
+    sessionIds
+  );
 }
 
 // ── Session accumulator flush ─────────────────────────────────────────────────
@@ -186,6 +234,7 @@ function insertEventRow(
   const wasInserted = (info as { changes: number }).changes > 0;
   if (wasInserted && event.kind === "assistant") {
     insertAssistantDerived(stmts, event, eventId, sessionId);
+    insertFilesTouched(stmts, event, eventId, sessionId);
   }
   return wasInserted;
 }
