@@ -34,7 +34,7 @@ export function prepareIngestStmts(db: Database): IngestStmts {
     ),
 
     // Metadata merge: applied once per session at end-of-file flush.
-    // Updates min/max timestamps and total_events from in-memory accumulators.
+    // Updates min/max timestamps, total_events, and back-fills first seen cwd.
     updateSession: db.prepare(
       `UPDATE sessions SET
           started_at   = CASE WHEN started_at IS NULL
@@ -44,6 +44,7 @@ export function prepareIngestStmts(db: Database): IngestStmts {
                            THEN $maxTs ELSE ended_at END,
           model        = COALESCE(NULLIF(model, ''), $model),
           version      = COALESCE(NULLIF(version, ''), $version),
+          cwd          = COALESCE(NULLIF(cwd, ''), $cwd),
           total_events = total_events + $delta
        WHERE id = $id`
     ),

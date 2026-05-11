@@ -39,6 +39,11 @@ const KNOWN_MIGRATIONS: Migration[] = [
     filename: "001-initial.sql",
     sqlPath: join(MIGRATIONS_DIR, "001-initial.sql"),
   },
+  {
+    version: 2,
+    filename: "002-add-session-cwd.sql",
+    sqlPath: join(MIGRATIONS_DIR, "002-add-session-cwd.sql"),
+  },
 ];
 
 /**

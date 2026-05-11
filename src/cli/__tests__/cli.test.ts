@@ -154,6 +154,7 @@ describe("CLI: sessions", () => {
   it("exits 0 and shows session rows in text mode", async () => {
     const { exitCode, stdout } = await runCli(["sessions", "--limit", "10"], dbPath);
     expect(exitCode).toBe(0);
+    // shortProject() keeps "test-project" (no leading dash) as-is
     expect(stdout).toContain("test-project");
   });
 

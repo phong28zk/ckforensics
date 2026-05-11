@@ -7,6 +7,27 @@
 
 import { bold, dim } from "./color.ts";
 
+const ANSI_REGEX = /\x1b\[[0-9;]*m/g;
+
+/** Visible character length, ignoring ANSI escape sequences. */
+function visibleLength(s: string): number {
+  return s.replace(ANSI_REGEX, "").length;
+}
+
+/** Truncate string to width, using ellipsis at the END (right). */
+export function truncateRight(s: string, width: number): string {
+  if (visibleLength(s) <= width) return s;
+  return s.slice(0, width - 1) + "…";
+}
+
+/** Pad a string to visible width, accounting for ANSI codes. */
+function padVisible(s: string, width: number, align: "left" | "right"): string {
+  const vl = visibleLength(s);
+  if (vl >= width) return s;
+  const pad = " ".repeat(width - vl);
+  return align === "right" ? pad + s : s + pad;
+}
+
 /** Write JSON to stdout with the standard ckforensics envelope. */
 export function emitJson(data: unknown): void {
   const envelope = {
@@ -36,27 +57,27 @@ export function renderTable(
 ): string {
   if (rows.length === 0) return dim("(no data)") + "\n";
 
-  // Compute column widths
+  // Compute column widths (visible length, ANSI-stripped)
   const widths = columns.map((col) => {
     const maxVal = Math.max(
-      ...rows.map((r) => String(r[col.key] ?? "").length)
+      ...rows.map((r) => visibleLength(String(r[col.key] ?? "")))
     );
     return col.width ?? Math.max(col.header.length, maxVal);
   });
 
   const sep = "  ";
   const header = columns
-    .map((col, i) => bold(col.header.padEnd(widths[i]!)))
+    .map((col, i) => bold(padVisible(col.header, widths[i]!, "left")))
     .join(sep);
   const divider = widths.map((w) => "─".repeat(w)).join(sep);
 
   const body = rows.map((row) =>
     columns
       .map((col, i) => {
-        const val = String(row[col.key] ?? "");
-        return col.align === "right"
-          ? val.padStart(widths[i]!)
-          : val.padEnd(widths[i]!);
+        const raw = String(row[col.key] ?? "");
+        const w = widths[i]!;
+        const truncated = visibleLength(raw) > w ? truncateRight(raw, w) : raw;
+        return padVisible(truncated, w, col.align ?? "left");
       })
       .join(sep)
   );

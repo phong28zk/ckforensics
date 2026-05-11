@@ -14,7 +14,7 @@ import { listSessions } from "../queries/sessions-query.ts";
 import { sessionsToMarkdown } from "../exporters/markdown-exporter.ts";
 import { toCsv, SESSIONS_CSV_COLUMNS } from "../exporters/csv-exporter.ts";
 import { emitJson, renderTable } from "../output-formatter.ts";
-import { red, dim, bold, cyan } from "../color.ts";
+import { red, dim, bold, cyan, green, yellow } from "../color.ts";
 
 interface GlobalOptions {
   json: boolean;
@@ -76,30 +76,31 @@ export function registerSessionsCommand(program: Command): void {
           return;
         }
 
-        // Default text table
+        // Default text table — compact, color-tiered, smart truncation
         process.stdout.write(bold(cyan("Recent Sessions\n")));
         const tableRows = sessions.map((s) => ({
-          id: s.id.slice(0, 8) + "…",
-          project: s.projectSlug,
+          id: s.id.slice(0, 8),
+          project: shortProject(s.cwd, s.projectSlug),
           started: s.startedAt ? fmtDate(s.startedAt) : "—",
-          model: s.model ?? "—",
+          model: shortModel(s.model),
           events: String(s.totalEvents),
-          cost: s.estimatedCostUsd != null
-            ? `$${s.estimatedCostUsd.toFixed(4)}`
-            : "—",
+          cost: colorCost(s.estimatedCostUsd),
           duration: fmtDuration(s.durationMs),
         }));
 
         process.stdout.write(
           renderTable(tableRows, [
-            { header: "ID", key: "id", width: 10 },
-            { header: "Project", key: "project", width: 24 },
-            { header: "Started", key: "started", width: 19 },
-            { header: "Model", key: "model", width: 20 },
-            { header: "Events", key: "events", width: 7, align: "right" },
-            { header: "Cost", key: "cost", width: 10, align: "right" },
-            { header: "Duration", key: "duration", width: 10 },
+            { header: "ID",       key: "id",       width: 8 },
+            { header: "Project",  key: "project",  width: 28 },
+            { header: "Started",  key: "started",  width: 16 },
+            { header: "Model",    key: "model",    width: 10 },
+            { header: "Events",   key: "events",   width: 6,  align: "right" },
+            { header: "Cost",     key: "cost",     width: 10, align: "right" },
+            { header: "Duration", key: "duration", width: 8,  align: "right" },
           ])
+        );
+        process.stdout.write(
+          dim(`\n${sessions.length} sessions shown · use --limit N to change · costs are API-rate equivalent\n`)
         );
       } finally {
         closeDb(db);
@@ -118,6 +119,47 @@ function fmtDate(iso: string): string {
 function fmtDuration(ms: number | null): string {
   if (ms == null) return "—";
   if (ms < 60_000) return `${(ms / 1000).toFixed(0)}s`;
-  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ${Math.floor((ms % 60_000) / 1000)}s`;
-  return `${Math.floor(ms / 3_600_000)}h ${Math.floor((ms % 3_600_000) / 60_000)}m`;
+  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m`;
+  return `${Math.floor(ms / 3_600_000)}h${String(Math.floor((ms % 3_600_000) / 60_000)).padStart(2, "0")}m`;
+}
+
+/**
+ * Compact project label: basename of cwd (preferred) or slug fallback.
+ *   cwd = "/media/sandro8/GM/0.Work/ckforensics"     → "ckforensics"
+ *   cwd = "/home/.../project-noname"                 → "project-noname"
+ *   no cwd, slug = "-media-...-ckforensics"          → "ckforensics" (heuristic)
+ *   no cwd, slug = "test-project"                    → "test-project"
+ *
+ * Migration 002 added `cwd` so new ingests get accurate basenames. Older
+ * sessions ingested before migration may have null cwd → slug heuristic.
+ */
+function shortProject(cwd: string | null, slug: string): string {
+  if (cwd) {
+    const parts = cwd.split("/").filter(Boolean);
+    if (parts.length > 0) return parts[parts.length - 1]!;
+  }
+  if (!slug) return "—";
+  if (!slug.startsWith("-")) return slug;
+  const parts = slug.replace(/^-/, "").split("-").filter(Boolean);
+  return parts.length === 0 ? slug : parts[parts.length - 1]!;
+}
+
+/** "claude-opus-4-7" → "Opus 4.7"; "claude-sonnet-4-6" → "Sonnet 4.6" */
+function shortModel(model: string | null): string {
+  if (!model) return "—";
+  const m = model.toLowerCase();
+  const match = m.match(/(opus|sonnet|haiku)-?(\d+)-?(\d+)?/);
+  if (!match) return model;
+  const [, fam, maj, min] = match;
+  const name = fam!.charAt(0).toUpperCase() + fam!.slice(1);
+  return `${name} ${maj}${min ? "." + min : ""}`;
+}
+
+/** Color-code cost by tier and format as $X.YY */
+function colorCost(cost: number | null): string {
+  if (cost == null || cost === 0) return dim("—");
+  const formatted = `$${cost.toFixed(cost >= 1 ? 2 : 4)}`;
+  if (cost >= 10) return red(formatted);
+  if (cost >= 1) return yellow(formatted);
+  return green(formatted);
 }

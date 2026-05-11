@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-05-11
+
+### Added
+- `cwd` column on sessions (migration 002): true project basename instead of slug heuristic.
+- `truncateRight()` + ANSI-aware padding in table renderer.
+
+### Changed
+- `sessions` text mode: project basename from cwd, compact model name ("Opus 4.7"), color-tiered cost (red >$10, yellow $1-10, green <$1), tighter columns, footer hint.
+- `fmtDuration` compact: "14h36m" instead of "14h 36m".
+
 ## [0.1.3] - 2026-05-11
 
 ### Changed

@@ -45,6 +45,7 @@ interface SessionAccum {
   projectSlug: string;
   model: string;
   version: string;
+  cwd: string;       // first non-empty cwd seen from event stream
   minTs: string;
   maxTs: string;
   deltaEvents: number;
@@ -206,6 +207,7 @@ function flushSessions(
         $maxTs: s.maxTs,
         $model: s.model,
         $version: s.version,
+        $cwd: s.cwd,
         $delta: s.deltaEvents,
       });
     }
@@ -234,6 +236,7 @@ function insertEventRow(
       id: sessionId, projectSlug,
       model: extractModel(event) ?? "",
       version: extractVersion(event) ?? "",
+      cwd: extractCwd(event) ?? "",
       minTs: ts, maxTs: ts,
       deltaEvents: 0, flushedToDb: false,
     };
@@ -254,6 +257,7 @@ function insertEventRow(
   accum.deltaEvents++;
   if (!accum.model) accum.model = extractModel(event) ?? accum.model;
   if (!accum.version) accum.version = extractVersion(event) ?? accum.version;
+  if (!accum.cwd) accum.cwd = extractCwd(event) ?? accum.cwd;
 
   const info = stmts.insertEvent.run({
     $eventId: eventId, $sessionId: sessionId,
@@ -288,4 +292,9 @@ function extractModel(event: ParsedEvent): string | undefined {
 function extractVersion(event: ParsedEvent): string | undefined {
   const e = event as unknown as Record<string, unknown>;
   return typeof e["version"] === "string" ? e["version"] : undefined;
+}
+
+function extractCwd(event: ParsedEvent): string | undefined {
+  const e = event as unknown as Record<string, unknown>;
+  return typeof e["cwd"] === "string" ? e["cwd"] : undefined;
 }

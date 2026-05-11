@@ -10,6 +10,7 @@ import type { Database } from "bun:sqlite";
 export interface SessionRow {
   id: string;
   projectSlug: string;
+  cwd: string | null;
   startedAt: string | null;
   endedAt: string | null;
   model: string | null;
@@ -28,6 +29,7 @@ export interface ListSessionsOptions {
 interface DbSessionRow {
   id: string;
   project_slug: string;
+  cwd: string | null;
   started_at: string | null;
   ended_at: string | null;
   model: string | null;
@@ -55,6 +57,7 @@ export function listSessions(
     SELECT
       s.id,
       s.project_slug,
+      s.cwd,
       s.started_at,
       s.ended_at,
       s.model,
@@ -77,6 +80,7 @@ export function listSessions(
   return rows.map((r) => ({
     id: r.id,
     projectSlug: r.project_slug,
+    cwd: r.cwd ?? null,
     startedAt: r.started_at,
     endedAt: r.ended_at,
     model: r.model,
