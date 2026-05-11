@@ -6,6 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-05-11
+
+### Added
+- **Skill Recommender** (Phase 09 of v0.2): \`ckforensics suggest\` + \`ckforensics skills\`.
+  - Pattern detector: read-fanout, test-loop, manual-diff-cycle, grep-walk, subagent-skip
+  - Skill catalog indexer reading ~/.claude/skills/**/SKILL.md frontmatter
+  - Pattern-to-skill matcher with keyword + intent scoring
+  - Savings estimator (tokens + USD via model-pricing)
+  - Skill usage tracker detecting \`<command-name>ck:foo</command-name>\` activations
+  - Effectiveness analyzer (tool-call deltas for used vs unused)
+  - Dismissed recs persistence at ~/.config/ckforensics/dismissed.json
+  - Migration 003: skill_catalog + skill_usage tables
+
 ## [0.1.5] - 2026-05-11
 
 ### Changed
