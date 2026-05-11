@@ -13,6 +13,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { Database } from "bun:sqlite";
 import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -415,8 +416,9 @@ describe("subagentCosts with real fixture files", () => {
   afterEach(() => closeDb(db));
 
   it("sample-05 fixture produces valid manifest with subagentCosts defined", async () => {
-    const fixturesDir = new URL("../../parsers/__fixtures__/", import.meta.url);
-    const p = new URL("sample-05.jsonl", fixturesDir).pathname;
+    // fileURLToPath handles Win32 file URLs (file:///D:/...) which `.pathname`
+    // returns with a leading slash + forward separators — unusable by fs APIs.
+    const p = fileURLToPath(new URL("../../parsers/__fixtures__/sample-05.jsonl", import.meta.url));
     await ingestFile(db, p, "fixture");
 
     const manifest = buildManifest(db, latestSessionId(db)!);
