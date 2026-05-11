@@ -500,6 +500,7 @@ describe("ingest — performance benchmark", () => {
         }
       }
     },
-    180_000
+    // Windows CI runners hit 216s on this 100k-event ingest; allow 5min headroom.
+    300_000
   );
 });
