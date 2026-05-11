@@ -6,6 +6,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-05-11
+
+### Fixed
+- \`suggest\`: double prefix in invocation hints (\`/ck:ck:test\` -> \`/ck:test\`). Strip leading \`ck:\`/\`ckm:\` from skill names before prepending \`/ck:\`.
+
 ## [0.1.6] - 2026-05-11
 
 ### Added

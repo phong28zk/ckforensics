@@ -180,7 +180,12 @@ export function buildRecommendations(
   return matches.map((m) => {
     const entry = catalogByName.get(m.skillName);
     const savings = savingsMap.get(m.skillName) ?? { tokens: 0, usd: 0 };
-    const hint = INVOCATION_HINTS[m.skillName] ?? `/ck:${m.skillName}`;
+    // Skill names from catalog may already include "ck:" prefix (e.g. "ck:test").
+    // Strip it before prepending "/ck:" to avoid double prefix like "/ck:ck:test".
+    const bareName = m.skillName.replace(/^ckm?:/, "");
+    const hint = INVOCATION_HINTS[m.skillName]
+      ?? INVOCATION_HINTS[bareName]
+      ?? `/ck:${bareName}`;
 
     return {
       skillName: m.skillName,
