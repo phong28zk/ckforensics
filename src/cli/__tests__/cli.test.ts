@@ -45,6 +45,12 @@ async function runCli(args: string[], dbPath: string): Promise<SpawnResult> {
   ]);
 
   const exitCode = await proc.exited;
+  // Surface stderr in CI on non-zero exit so cross-platform failures are debuggable.
+  if (exitCode !== 0 && (process.env.CI || process.env.GITHUB_ACTIONS)) {
+    console.error(`[runCli exit=${exitCode}] argv=${JSON.stringify(args)}`);
+    console.error(`[runCli stderr]\n${stderr}`);
+    console.error(`[runCli stdout]\n${stdout}`);
+  }
   return { exitCode, stdout, stderr };
 }
 
