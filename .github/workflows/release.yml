@@ -137,7 +137,6 @@ jobs:
         # originally created with a user token (not OIDC). Sigstore signs OK but
         # registry PUT rejects. Pending resolution; manual `npm publish --otp=...`
         # remains the fallback for affected versions.
-        continue-on-error: true
         run: npm publish --access public --provenance
         # NODE_AUTH_TOKEN intentionally unset — npm uses OIDC token from GH Actions
         # via Trusted Publisher binding. --provenance attaches SLSA attestation.
