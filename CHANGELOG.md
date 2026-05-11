@@ -6,6 +6,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-05-11
+
+### Changed
+- CI npm publish via NPM_TOKEN secret (granular automation token, bypass-2fa, package-scoped).
+- Drop Trusted Publisher / OIDC path — TP returned 404 for packages with prior user-token publishes.
+
 ## [0.1.4] - 2026-05-11
 
 ### Added

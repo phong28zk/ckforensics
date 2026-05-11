@@ -9,7 +9,6 @@ on:
 # Required for softprops/action-gh-release to create/upload releases.
 permissions:
   contents: write   # create/update GitHub Release
-  id-token: write   # OIDC token for npm Trusted Publisher (no NPM_TOKEN needed)
 
 jobs:
   # ── Per-platform binary build ─────────────────────────────────────────────
@@ -132,11 +131,9 @@ jobs:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
 
-      - name: Publish to npm (via Trusted Publisher — best-effort)
-        # Known: npm sometimes returns 404 on TP publishes when the package was
-        # originally created with a user token (not OIDC). Sigstore signs OK but
-        # registry PUT rejects. Pending resolution; manual `npm publish --otp=...`
-        # remains the fallback for affected versions.
-        run: npm publish --access public --provenance
-        # NODE_AUTH_TOKEN intentionally unset — npm uses OIDC token from GH Actions
-        # via Trusted Publisher binding. --provenance attaches SLSA attestation.
+      - name: Publish to npm
+        # NPM_TOKEN: granular automation token, bypass-2fa, scoped to ckforensics.
+        # Rotate via npm settings → Access Tokens; update secret with `gh secret set`.
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
