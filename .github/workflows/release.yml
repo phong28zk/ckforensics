@@ -132,7 +132,12 @@ jobs:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
 
-      - name: Publish to npm
+      - name: Publish to npm (via Trusted Publisher — best-effort)
+        # Known: npm sometimes returns 404 on TP publishes when the package was
+        # originally created with a user token (not OIDC). Sigstore signs OK but
+        # registry PUT rejects. Pending resolution; manual `npm publish --otp=...`
+        # remains the fallback for affected versions.
+        continue-on-error: true
         run: npm publish --access public --provenance
         # NODE_AUTH_TOKEN intentionally unset — npm uses OIDC token from GH Actions
         # via Trusted Publisher binding. --provenance attaches SLSA attestation.
