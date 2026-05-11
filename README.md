@@ -1,25 +1,93 @@
 # ckforensics
 
-**Forensic CLI for Claude Code sessions — audit, redact, export your transcripts.**
+> 🔍 **Forensic CLI for Claude Code sessions** — see where your tokens went, what Claude touched, and which skills you missed.
 
 [![CI](https://github.com/phong28zk/ckforensics/actions/workflows/ci.yml/badge.svg)](https://github.com/phong28zk/ckforensics/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/ckforensics)](https://www.npmjs.com/package/ckforensics)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Bun](https://img.shields.io/badge/runtime-Bun-f472b6)](https://bun.sh)
+[![ClaudeKit Skill](https://img.shields.io/badge/ClaudeKit-/ck:forensics-9333ea)](#claudekit-integration)
+
+**One install. Two interfaces.** Standalone CLI **and** ClaudeKit `/ck:forensics` skill — bundled together.
+
+```bash
+npm i -g ckforensics
+```
 
 ---
 
-## Why ckforensics
+## What does it do?
 
-**Pain:**
-- Claude Code transcripts stored as raw JSONL — no way to summarize or audit them
-- Sensitive keys / tokens leak into `.jsonl` files that get committed or shared
-- No visibility into token usage, tool calls, or subagent orchestration patterns
+After Claude Code finishes a session, ckforensics parses `~/.claude/projects/**/*.jsonl` and tells you:
 
-**Solution:**
-- Ingest all sessions into a local SQLite DB — queryable, indexed, stays on disk
-- Redact 9 secret patterns (API keys, AWS creds, JWTs, PEM blocks) before any export
-- CLI commands for summary, audit, session diff, and export — no cloud, no telemetry
+```
+╭─ ckforensics summary --days 7 ──────────────────────────────────╮
+│  Sessions          19                                            │
+│  Input tokens      69,190                                        │
+│  Output tokens     3,088,275                                     │
+│  Cache read        934,429,934                                   │
+│  Total tokens      967,848,242                                   │
+│  Estimated cost*   $733.8981  ← value extracted from $100 Max    │
+│  Files touched     149                                           │
+│  Edit operations   488                                           │
+╰──────────────────────────────────────────────────────────────────╯
+```
+
+```
+╭─ ckforensics map --last (where do my tokens go?) ──────────────╮
+│  tool:Bash    ████████  40.5%   30,444 tok  (293 calls)          │
+│  tool:Edit    ███       16.1%   12,396 tok  (98)                 │
+│  assistant    ██        11.9%    9,197 tok  (563)                │
+│  tool:Read    ██        10.8%    8,327 tok  (70)                 │
+│  tool:Write   ██         9.3%    7,179 tok  (42)                 │
+│                                                                   │
+│  Total: 77,204 tokens  (±20% attribution margin)                 │
+╰──────────────────────────────────────────────────────────────────╯
+```
+
+```
+╭─ ckforensics suggest --last (what skills would have helped?) ──╮
+│  #1  /ck:scout                                  confidence: 85% │
+│      You ran 23× Read on src/audit/* in turns 47-89             │
+│      /ck:scout fans out file discovery in parallel              │
+│      Est. savings: 12k tokens ($0.14)                           │
+│                                                                   │
+│  #2  /ck:test                                   confidence: 72% │
+│      8× `bun test` Bash calls in retry loop                     │
+╰──────────────────────────────────────────────────────────────────╯
+```
+
+```
+╭─ ckforensics audit --last  (session change manifest) ──────────╮
+│  ## Subagent Cost Breakdown                                      │
+│                                                                   │
+│  │ Subagent           │ Tokens │ Cost   │ Tool calls │ Duration ││
+│  ├────────────────────┼────────┼────────┼────────────┼──────────┤│
+│  │ Agent: P11 log infra│ 28.9M │ $28.42 │ 20         │ open     ││
+│  │ └── nested forensics│ 28.2M │ $27.91 │ 19         │ open     ││
+│  │ Agent: P06 build    │ 646k  │ $0.61  │ 2          │ 3h0m     ││
+│  │ Agent: P07 ctx map  │ 751k  │ $0.47  │ 1          │ 12m28s   ││
+│  └────────────────────┴────────┴────────┴────────────┴──────────┘│
+│                                                                   │
+│  ↑ Identifies runaway subagents in long sessions                 │
+╰──────────────────────────────────────────────────────────────────╯
+```
+
+\* API-rate equivalent (Anthropic Nov 2025 pricing). Subscription users (Pro/Max/Team) pay flat fee — treat as "value extracted from your plan", not actual billing.
+
+---
+
+## Why does this exist?
+
+| Pain | ckforensics |
+|------|-------------|
+| Claude Code stores transcripts as opaque JSONL | Parses into queryable SQLite |
+| You can't see what subagents cost vs the parent | Recursive cost tree per Agent()/Task() |
+| You don't know which skills you skipped using | Pattern detection → ranked recommendations |
+| Auto-compact is opaque, drops context invisibly | `map` shows what eats your window |
+| Sensitive keys leak into committed jsonl logs | 9 built-in redaction rules |
+| "How much did Claude cost me this week?" | `summary` gives token + USD totals |
+| "What did Claude actually change in that 14h session?" | `audit` produces signed-off manifest |
 
 ---
 
@@ -29,7 +97,15 @@
 npm i -g ckforensics
 ```
 
-Or download a prebuilt binary from [Releases](https://github.com/phong28zk/ckforensics/releases):
+Single command installs:
+1. **Cross-platform binary** (Linux x64/arm64, macOS Apple Silicon, Windows x64) via npm postinstall download
+2. **ClaudeKit skill** at `~/.claude/skills/ckforensics/` — auto-activates in next Claude Code session
+
+> **Intel Mac:** build from source — `bun build --compile --target=bun-darwin-x64 src/cli/index.ts --outfile ckforensics`
+>
+> **Opt out of skill copy:** `CKFORENSICS_SKIP_SKILL_INSTALL=1 npm i -g ckforensics`
+
+Or grab a binary directly:
 
 ```bash
 # Linux x64
@@ -37,116 +113,146 @@ curl -L https://github.com/phong28zk/ckforensics/releases/latest/download/ckfore
   -o /usr/local/bin/ckforensics && chmod +x /usr/local/bin/ckforensics
 ```
 
-Platforms: `linux-x64`, `linux-arm64`, `macos-arm64` (Apple Silicon), `windows-x64`
-
-> Intel Mac users: build from source — `bun build --compile --target=bun-darwin-x64 src/cli/index.ts --outfile ckforensics`
-
 ---
 
 ## Quick Start
 
 ```bash
-# 1. Ingest all sessions from ~/.claude/projects/
-ckforensics ingest
-
-# 2. Summarize recent sessions (default 7 days)
-ckforensics summary
-ckforensics summary --days 1          # today
-ckforensics summary --days 30         # month
-
-# 3. List recent sessions
-ckforensics sessions --limit 10
-
-# 4. Audit the most recent session (markdown manifest)
-ckforensics audit --last
-ckforensics audit <session-id> --out review.md
-
-# 5. Redact secrets from a file before sharing
-ckforensics redact review.md --in-place
-
-# 6. Export for scripting
-ckforensics export summary --format json | jq
-ckforensics export sessions --format csv --out sessions.csv
-
-# 7. Health check
-ckforensics doctor
+ckforensics ingest                         # populate DB (~20s for 1000+ jsonl)
+ckforensics summary                        # weekly totals
+ckforensics audit --last                   # last session manifest
+ckforensics map --last --top 10            # context heatmap
+ckforensics suggest --last                 # skill recommendations
+ckforensics doctor                         # health check
 ```
 
-> DB stored at XDG-compliant path (mode `0600`):
-> - Linux: `~/.local/share/ckforensics/store.db`
-> - macOS: `~/Library/Application Support/ckforensics/store.db`
-> - Windows: `%APPDATA%\ckforensics\store.db`
->
-> Nothing leaves your machine. Run `ckforensics path` to see resolved paths.
+**Recommended cron** (hourly auto-ingest):
 
-### About cost numbers
-
-Cost shown is **API-rate equivalent** computed from token counts × Anthropic published prices ([Nov 2025 snapshot](https://platform.claude.com/docs/en/about-claude/pricing)).
-
-- **API users:** approximates your actual bill (±10-30% for cache-pricing edge cases)
-- **Subscription users (Pro / Max / Team):** flat plan fee covers this; treat the number as **"value extracted"** from your subscription
-
-Example: a 14h Opus 4.7 session showing `$166` means you'd pay ~$166 at API rates — your $100/mo Max plan covers it with positive ROI.
+```bash
+(crontab -l 2>/dev/null; echo "0 * * * * $(which ckforensics) ingest >> ~/.local/state/ckforensics/logs/ingest.log 2>&1") | crontab -
+```
 
 ---
 
-## Screenshots
+## ClaudeKit integration
+
+When installed, `/ck:forensics` is available inside Claude Code:
 
 ```
-[ terminal recording placeholder — see docs/demo.gif once available ]
+You: "show me last session cost"
+Claude: [auto-invokes /ck:forensics → reads SKILL.md → runs ckforensics audit --last]
+Claude: "Last session was 18h, $1102 API-equivalent. Top files: ..."
 ```
+
+**Triggers** (skill description picks these up):
+- "what did Claude touch this session"
+- "show me last session cost"
+- "where did my tokens go"
+- "audit last session"
+- "what skill should I have used"
+- `/ck:forensics summary` / `/ck:forensics audit` / etc
+
+The skill ships with 3 workflows:
+- **`workflow-eod.md`** — end-of-day session review
+- **`workflow-pre-commit.md`** — generate commit message + redact before commit
+- **`workflow-weekly-retro.md`** — Sunday retrospective
+
+---
+
+## Storage
+
+DB at XDG-compliant path (mode `0600`):
+
+| OS | Path |
+|----|------|
+| Linux | `~/.local/share/ckforensics/store.db` |
+| macOS | `~/Library/Application Support/ckforensics/store.db` |
+| Windows | `%APPDATA%\ckforensics\store.db` |
+
+Logs (daily-rotated):
+
+| OS | Path |
+|----|------|
+| Linux | `~/.local/state/ckforensics/logs/` |
+| macOS | `~/Library/Logs/ckforensics/` |
+| Windows | `%LOCALAPPDATA%\ckforensics\Logs\` |
+
+**Nothing leaves your machine.** No telemetry. No cloud sync. Run `ckforensics path` to see resolved paths.
 
 ---
 
 ## Feature Matrix
 
-| Feature | ckforensics | ccusage | Native CC |
-|---------|:-----------:|:-------:|:---------:|
+| Feature | ckforensics | ccusage | Native CC `/usage` |
+|---------|:-----------:|:-------:|:--------------------:|
 | Local SQLite storage | ✅ | ✅ | ❌ |
-| Version-aware cost pricing | ✅ | 🟡 | ✅ (live only) |
-| Token usage analytics | ✅ | ✅ | ❌ |
-| Secret redaction (9 rules) | ✅ | ❌ | ❌ |
+| Token usage analytics | ✅ | ✅ | ✅ (live only) |
+| Version-aware cost pricing | ✅ | 🟡 | ✅ |
+| Subagent cost forensics (recursive) | ✅ | ❌ | ❌ |
+| Context window heatmap | ✅ | ❌ | ❌ |
+| Pre-compact simulation | ✅ | ❌ | ❌ |
+| Skill recommendation engine | ✅ | ❌ | ❌ |
 | Session change manifest (diff + reasoning) | ✅ | ❌ | ❌ |
-| Subagent attribution | ✅ | ❌ | ❌ |
-| Markdown / JSON / CSV export | ✅ | ❌ | ❌ |
-| Offline / no telemetry | ✅ | ✅ | ✅ |
+| Secret redaction (9 rules) | ✅ | ❌ | ❌ |
+| Markdown / JSON / CSV export | ✅ | 🟡 | ❌ |
+| Offline, zero telemetry | ✅ | ✅ | ✅ |
 | Cross-platform binaries | ✅ | ❌ | ✅ |
+| ClaudeKit skill bundled | ✅ | ❌ | ❌ |
 
 ---
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `ingest` | Parse JSONL files → SQLite |
-| `summary` | Token + cost summary for a time range |
-| `audit` | Detect secrets / anomalies in a session |
-| `export` | Output session as Markdown or JSON |
-| `redact` | Strip secrets from JSONL in-place |
-| `sessions` | List sessions with metadata |
-| `path` | Show DB path and stats |
-| `doctor` | Verify DB integrity and schema version |
+| Command | Purpose |
+|---------|---------|
+| `ingest` | Parse JSONL → SQLite (idempotent + incremental, optional `--watch`) |
+| `summary` | Token + cost rollup over rolling window (default 7d) |
+| `sessions` | List sessions with cost, duration, model |
+| `audit` | Per-session manifest: diffs + reasoning + subagent breakdown |
+| `map` | Context-window heatmap by category, snapshot/diff/pin |
+| `suggest` | Skill recommendations from detected tool patterns |
+| `skills` | Browse ClaudeKit skill catalog with usage stats |
+| `export` | Pipe-friendly export (markdown, JSON, CSV) |
+| `redact` | Strip 9 secret patterns from a file |
+| `doctor` | Health check (DB, paths, schema version, log activity) |
+| `path` | Show all resolved file system paths |
+
+Run `ckforensics <cmd> --help` for flags.
 
 ---
 
-## Architecture
+## About cost numbers
 
-See [docs/architecture.md](docs/architecture.md) — module overview and data-flow diagram.
+Cost is **API-rate equivalent** computed from token counts × Anthropic's published prices ([Nov 2025 snapshot](https://platform.claude.com/docs/en/about-claude/pricing)).
 
-## Threat Model
+- **API users:** approximates your actual bill (±10-30% for cache-pricing edge cases)
+- **Subscription users (Pro / Max / Team):** flat plan fee covers this — treat the number as **"value extracted"** from your subscription
 
-See [docs/threat-model.md](docs/threat-model.md) — privacy stance, redaction guarantees, and known gaps.
+Example: a 14h Opus 4.7 session showing `$166` means you'd pay ~$166 at API rates — your $100/mo Max plan covers it with positive ROI.
 
-## Schema
+---
 
-See [docs/jsonl-schema-v1.md](docs/jsonl-schema-v1.md) — reverse-engineered Claude Code JSONL event types.
+## Documentation
 
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) — dev setup, PR checklist, fixture contribution flow.
+| Doc | Topic |
+|-----|-------|
+| [docs/architecture.md](docs/architecture.md) | Module overview, data flow |
+| [docs/threat-model.md](docs/threat-model.md) | Privacy stance, redaction guarantees |
+| [docs/jsonl-schema-v1.md](docs/jsonl-schema-v1.md) | Reverse-engineered JSONL event types |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, PR checklist, fixture rules |
+| [ROADMAP.md](ROADMAP.md) | v0.1.x → v0.6+ feature plans |
+| [CHANGELOG.md](CHANGELOG.md) | Version history |
 
 ---
 
 ## License
 
 MIT — [LICENSE](LICENSE) — Copyright (c) 2026 phong28zk
+
+---
+
+## Acknowledgements
+
+- [ClaudeKit](https://github.com/phong28zk) ecosystem for the `/ck:*` skill pattern
+- [Anthropic](https://anthropic.com) for Claude Code + the public JSONL transcript format
+- [Bun](https://bun.sh) for single-binary compilation that makes cross-platform distribution painless

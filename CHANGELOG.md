@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-05-11
+
+### Changed
+- README polish: hero ASCII-box demos (summary, map, suggest, audit), feature matrix vs ccusage + native CC, ClaudeKit integration section, expanded commands table, removed broken screenshot placeholder.
+- Added storage path tables for Linux/macOS/Windows.
+- Added recommended cron snippet for hourly auto-ingest.
+
 ## [0.2.2] - 2026-05-11
 
 ### Added
