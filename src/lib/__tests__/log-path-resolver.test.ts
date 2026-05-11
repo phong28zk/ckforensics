@@ -41,40 +41,44 @@ function winEnv(overrides: Partial<Record<string, string>> = {}): PlatformEnv {
   };
 }
 
+// Win32 path.join produces backslashes; normalise both sides for POSIX-flavoured
+// fixture paths so test passes on both Linux and Windows CI runners.
+const norm = (s: string): string => s.replace(/\\/g, "/");
+
 // ── resolveLogDir ─────────────────────────────────────────────────────────────
 
 describe("resolveLogDir — Linux", () => {
   it("uses XDG_STATE_HOME when set", () => {
     const dir = resolveLogDir(linuxEnv({ XDG_STATE_HOME: "/custom/state" }));
-    expect(dir).toBe("/custom/state/ckforensics/logs");
+    expect(norm(dir)).toBe("/custom/state/ckforensics/logs");
   });
 
   it("falls back to ~/.local/state when XDG_STATE_HOME is absent", () => {
     const dir = resolveLogDir(linuxEnv());
-    expect(dir).toBe("/home/alice/.local/state/ckforensics/logs");
+    expect(norm(dir)).toBe("/home/alice/.local/state/ckforensics/logs");
   });
 
   it("falls back to ~/.local/state when XDG_STATE_HOME is empty string", () => {
     const dir = resolveLogDir(linuxEnv({ XDG_STATE_HOME: "" }));
-    expect(dir).toBe("/home/alice/.local/state/ckforensics/logs");
+    expect(norm(dir)).toBe("/home/alice/.local/state/ckforensics/logs");
   });
 
   it("falls back to ~/.local/state when XDG_STATE_HOME is whitespace", () => {
     const dir = resolveLogDir(linuxEnv({ XDG_STATE_HOME: "   " }));
-    expect(dir).toBe("/home/alice/.local/state/ckforensics/logs");
+    expect(norm(dir)).toBe("/home/alice/.local/state/ckforensics/logs");
   });
 });
 
 describe("resolveLogDir — macOS", () => {
   it("returns ~/Library/Logs/ckforensics", () => {
     const dir = resolveLogDir(macEnv());
-    expect(dir).toBe("/Users/alice/Library/Logs/ckforensics");
+    expect(norm(dir)).toBe("/Users/alice/Library/Logs/ckforensics");
   });
 
   it("ignores XDG_STATE_HOME on macOS", () => {
     const env: PlatformEnv = { ...macEnv(), env: { XDG_STATE_HOME: "/custom" } };
     const dir = resolveLogDir(env);
-    expect(dir).toBe("/Users/alice/Library/Logs/ckforensics");
+    expect(norm(dir)).toBe("/Users/alice/Library/Logs/ckforensics");
   });
 });
 
