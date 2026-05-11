@@ -13,6 +13,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { Database } from "bun:sqlite";
+import { fileURLToPath } from "node:url";
 
 import { openDb, closeDb } from "../../store/db.ts";
 import { runMigrations } from "../../store/migration-runner.ts";
@@ -30,7 +31,9 @@ import type { HydratedEvent, FileChange } from "../manifest-types.ts";
 
 // ── Fixtures path ─────────────────────────────────────────────────────────────
 
-const FIXTURES_DIR = new URL("../../parsers/__fixtures__", import.meta.url).pathname;
+// fileURLToPath handles Win32 file URLs (e.g. file:///D:/...) which `.pathname`
+// returns with a leading slash + forward separators — unusable by fs APIs.
+const FIXTURES_DIR = fileURLToPath(new URL("../../parsers/__fixtures__/", import.meta.url));
 
 // ── DB helper ─────────────────────────────────────────────────────────────────
 
