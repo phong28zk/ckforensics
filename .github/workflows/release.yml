@@ -8,7 +8,8 @@ on:
 
 # Required for softprops/action-gh-release to create/upload releases.
 permissions:
-  contents: write
+  contents: write   # create/update GitHub Release
+  id-token: write   # OIDC token for npm Trusted Publisher (no NPM_TOKEN needed)
 
 jobs:
   # ── Per-platform binary build ─────────────────────────────────────────────
@@ -120,3 +121,18 @@ jobs:
             dist/ckforensics-win-x64.exe
             dist/checksums.txt
           fail_on_unmatched_files: true
+
+      # ── npm publish via Trusted Publisher (OIDC, no NPM_TOKEN) ───────────
+      # Requires npm package Trusted Publisher setup pointing at:
+      #   org=phong28zk, repo=ckforensics, workflow=release.yml
+      # See: https://docs.npmjs.com/trusted-publishers
+      - name: Set up Node.js (for npm CLI)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Publish to npm
+        run: npm publish --access public --provenance
+        # NODE_AUTH_TOKEN intentionally unset — npm uses OIDC token from GH Actions
+        # via Trusted Publisher binding. --provenance attaches SLSA attestation.
