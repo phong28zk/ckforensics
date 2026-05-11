@@ -234,4 +234,19 @@ async function main() {
   console.log(`[ckforensics] Run: ckforensics --help`);
 }
 
-main().catch((e) => fatal(String(e)));
+async function installSkill() {
+  // Best-effort: invoke the dedicated skill installer module. Failures here
+  // never block the binary install. Module handles its own opt-out + missing-
+  // source cases.
+  try {
+    await import("./install-claudekit-skill.js");
+  } catch (err) {
+    process.stderr.write(
+      `[ckforensics:skill] warning: failed to load skill installer (${err.message})\n`
+    );
+  }
+}
+
+main()
+  .then(installSkill)
+  .catch((e) => fatal(String(e)));

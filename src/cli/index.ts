@@ -43,7 +43,7 @@ program
     "Forensic analysis and audit tool for Claude Code session logs.\n" +
     "Ingests JSONL sessions, queries usage, and exports reports."
   )
-  .version("0.2.1", "-V, --version", "print version and exit")
+  .version("0.2.2", "-V, --version", "print version and exit")
   // Global flags — available on all subcommands via program.opts()
   .option("--db <path>", "override SQLite database path", resolveDbPath())
   .option("--no-color", "disable ANSI colour output")

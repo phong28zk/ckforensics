@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-05-11
+
+### Added
+- **\`/ck:forensics\` ClaudeKit skill** bundled into npm package. Installs to \`~/.claude/skills/ckforensics/\` via postinstall.
+  - SKILL.md with AskUserQuestion default + 7 subcommand handlers
+  - 3 workflow references: EOD review, pre-commit audit, weekly retro
+  - Commands + interpretation reference docs
+  - \`session-overview.py\` script: unified JSON report from multiple CLI calls (saves Claude 4 Bash invocations per review)
+- \`CKFORENSICS_SKIP_SKILL_INSTALL=1\` opt-out env var for skill copy step.
+
 ## [0.2.1] - 2026-05-11
 
 ### Added
