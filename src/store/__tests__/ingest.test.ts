@@ -330,19 +330,22 @@ describe("path-resolver — cross-platform", () => {
     home: fakeHome,
   };
 
+  // Normalise path separators so assertions work on both POSIX and Win32 runners.
+  const norm = (s: string): string => s.replace(/\\/g, "/");
+
   it("Linux without XDG_DATA_HOME → ~/.local/share/ckforensics", () => {
     const dir = resolveDataDir(linuxEnv);
-    expect(dir).toBe("/fake/home/.local/share/ckforensics");
+    expect(norm(dir)).toBe("/fake/home/.local/share/ckforensics");
   });
 
   it("Linux with XDG_DATA_HOME → $XDG_DATA_HOME/ckforensics", () => {
     const dir = resolveDataDir(linuxXdgEnv);
-    expect(dir).toBe("/custom/data/ckforensics");
+    expect(norm(dir)).toBe("/custom/data/ckforensics");
   });
 
   it("macOS → ~/Library/Application Support/ckforensics", () => {
     const dir = resolveDataDir(macEnv);
-    expect(dir).toBe("/fake/home/Library/Application Support/ckforensics");
+    expect(norm(dir)).toBe("/fake/home/Library/Application Support/ckforensics");
   });
 
   it("Windows with APPDATA → %APPDATA%/ckforensics", () => {
@@ -353,8 +356,8 @@ describe("path-resolver — cross-platform", () => {
 
   it("Windows without APPDATA falls back to home/AppData/Roaming", () => {
     const dir = resolveDataDir(winNoAppDataEnv);
-    expect(dir).toContain("ckforensics");
-    expect(dir).toContain(fakeHome);
+    expect(norm(dir)).toContain("ckforensics");
+    expect(norm(dir)).toContain(fakeHome);
   });
 
   it("resolveDbPath appends store.db to the data dir (mkdir=false)", () => {
@@ -427,11 +430,14 @@ describe("ingest — performance benchmark", () => {
         // allow 120s headroom. Local dev typically sees 20-25s.
         expect(elapsed).toBeLessThan(120);
       } finally {
-        closeDb(db);
-        rmSync(tmpDir, { recursive: true, force: true });
+        try { closeDb(db); } catch {}
+        for (let i = 0; i < 5; i++) {
+          try { rmSync(tmpDir, { recursive: true, force: true }); break; }
+          catch { await new Promise((r) => setTimeout(r, 200)); }
+        }
       }
     },
-    120_000
+    180_000
   );
 
   it(
@@ -481,13 +487,17 @@ describe("ingest — performance benchmark", () => {
         if (lines.length > 0) appendFileSync(filePath, lines.join("\n") + "\n", "utf-8");
 
         await ingestFile(db, filePath, "bench");
-        closeDb(db);
 
         const dbMb = statSync(dbPath).size / (1024 * 1024);
         console.log(`[perf/storage] events=${EVENTS} db=${dbMb.toFixed(1)}MB`);
         expect(dbMb).toBeLessThan(200);
       } finally {
-        rmSync(tmpDir, { recursive: true, force: true });
+        try { closeDb(db); } catch {}
+        // Windows: SQLite handle release is sometimes delayed; retry rmSync.
+        for (let i = 0; i < 5; i++) {
+          try { rmSync(tmpDir, { recursive: true, force: true }); break; }
+          catch { await new Promise((r) => setTimeout(r, 200)); }
+        }
       }
     },
     180_000
