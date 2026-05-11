@@ -16,7 +16,8 @@ import { runMigrations } from "../../store/migration-runner.ts";
 import { latestSessionId, loadSession } from "../../audit/session-loader.ts";
 import { indexSkillCatalog, loadCatalog } from "../../recommender/skill-catalog-indexer.ts";
 import { detectPatterns } from "../../recommender/pattern-detector.ts";
-import { buildRecommendations } from "../../recommender/pattern-skill-matcher.ts";
+import { buildRecommendations, buildSessionRecommendations } from "../../recommender/pattern-skill-matcher.ts";
+import { computeSessionSignals } from "../../recommender/session-signals.ts";
 import { buildSavingsMap } from "../../recommender/savings-estimator.ts";
 import { filterDismissed } from "../../recommender/dismissed-recs-store.ts";
 import { emitJson, emitRawJson } from "../output-formatter.ts";
@@ -86,6 +87,10 @@ function buildRecs(
       const savingsMap = buildSavingsMap(catalog.map((c) => c.name), pattern.tokensConsumed, model);
       allRecs.push(...buildRecommendations(pattern, catalog, savingsMap, { minConfidence: minConf, topK: topN }));
     }
+
+    // Session-level advice (once per session, not per pattern)
+    const signals = computeSessionSignals(db, sessionId);
+    allRecs.push(...buildSessionRecommendations(signals, minConf));
   }
 
   // Deduplicate by (type, key): keep highest confidence per unique key.

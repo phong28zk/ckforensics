@@ -6,6 +6,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-05-11
+
+### Added
+- **Session-level prompt advice** wired into `suggest` pipeline (v0.2.4 carried over `SESSION_PROMPT_ADVICE` but never invoked it).
+  - New `src/recommender/session-signals.ts`: `computeSessionSignals()` queries DB for durationMs, totalCacheReadTokens, maxBashCallsPerTurn, totalToolCalls per session.
+  - New `buildSessionRecommendations()` in `pattern-skill-matcher.ts`: evaluates all `SESSION_PROMPT_ADVICE` predicates, emits `PromptRecommendation[]` once per session (not per pattern).
+  - Three new advice entries active: "Checkpoint context periodically" (>6h sessions), "Audit memory injections" (>100M cache-read tokens), "Pipe Bash results" (≥5 Bash calls/turn).
+- **`ckforensics cache` command** (`src/cli/commands/cache.ts`): surfaces cache hit/miss stats.
+  - New `src/cli/queries/cache-query.ts`: `getCacheBreakdown()` with `--days` / `--session` scoping, model-aware savings calculation, per-session breakdown sorted by cache_read DESC.
+  - Text output: aggregate header with hit ratio color-coded (green ≥70%, yellow 40-69%, red <40%), top sessions table with savings.
+  - `--format md`: markdown table for sharing.
+  - `--json`: envelope with `$schema: "ckforensics-cache-v1"`, `generatedAt`, `label`, `data`.
+  - Supports `--session ID`, `--last`, `--days N` (default 7).
+
+### Changed
+- Version bumped to 0.2.5 in `package.json` and `src/cli/index.ts`.
+
 ## [0.2.4] - 2026-05-11
 
 ### Added

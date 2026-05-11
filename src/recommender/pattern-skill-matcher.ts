@@ -26,7 +26,8 @@ import {
   heuristicBonus,
   buildEvidence,
 } from "./pattern-skill-scorer.ts";
-import { ADVICE_BANK } from "./process-advice-bank.ts";
+import { ADVICE_BANK, SESSION_PROMPT_ADVICE } from "./process-advice-bank.ts";
+import type { SessionSignals } from "./session-signals.ts";
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -149,4 +150,54 @@ export function buildRecommendations(
     .filter((r): r is ProcessRecommendation | PromptRecommendation => r !== null);
 
   return [...skillRecs, ...adviceRecs];
+}
+
+/**
+ * Build session-level PromptRecommendations from SESSION_PROMPT_ADVICE.
+ *
+ * Evaluates each advice entry's test() predicate against the computed signals.
+ * Uses a synthetic "session-level" pattern carrying totalCacheReadTokens as
+ * tokensConsumed (used only for the pattern field — advice callers may ignore it).
+ *
+ * @param signals   Computed via computeSessionSignals().
+ * @param minConfidence  Filter threshold (same as per-pattern pipeline).
+ */
+export function buildSessionRecommendations(
+  signals: SessionSignals,
+  minConfidence = 0
+): PromptRecommendation[] {
+  const recs: PromptRecommendation[] = [];
+
+  // Synthetic pattern used as the required `pattern` field on PromptRecommendation.
+  // type "subagent-skip" reuses the existing union; tokensConsumed carries cache read tokens.
+  const syntheticPattern: import("./types.ts").SubagentSkipPattern = {
+    type: "subagent-skip",
+    toolCallCount: signals.totalToolCalls,
+    turnIndices: [],
+    timestamps: [],
+    tokensConsumed: signals.totalCacheReadTokens,
+  };
+
+  for (const entry of SESSION_PROMPT_ADVICE) {
+    const triggered = entry.test({
+      durationMs: signals.durationMs ?? 0,
+      cacheReadTokens: signals.totalCacheReadTokens,
+      bashCallsPerTurn: signals.maxBashCallsPerTurn,
+    });
+    if (!triggered) continue;
+
+    const confidence = entry.baseConfidence;
+    if (confidence < minConfidence) continue;
+
+    recs.push({
+      type: "prompt",
+      pattern: syntheticPattern,
+      title: entry.title,
+      description: entry.description,
+      confidence,
+      evidence: [],
+    } satisfies PromptRecommendation);
+  }
+
+  return recs;
 }

@@ -289,3 +289,53 @@ describe("CLI: path", () => {
     expect(parsed.data).toHaveProperty("db");
   });
 });
+
+// ── Tests: cache ──────────────────────────────────────────────────────────────
+
+describe("CLI: cache", () => {
+  it("exits 0 on populated DB with --days 365", async () => {
+    const { exitCode, stdout } = await runCli(["cache", "--days", "365"], dbPath);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Cache Performance");
+  });
+
+  it("--json emits valid envelope with $schema ckforensics-cache-v1", async () => {
+    const { exitCode, stdout } = await runCli(["cache", "--days", "365", "--json"], dbPath);
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout);
+    expect(parsed.$schema).toBe("ckforensics-cache-v1");
+    expect(parsed).toHaveProperty("generatedAt");
+    expect(parsed).toHaveProperty("data");
+    expect(parsed.data).toHaveProperty("totalCacheRead");
+    expect(parsed.data).toHaveProperty("cacheHitRatio");
+    expect(parsed.data).toHaveProperty("estimatedSavingsUsd");
+    expect(Array.isArray(parsed.data.bySession)).toBe(true);
+  });
+
+  it("--days 0 returns empty data with exit 0", async () => {
+    const { exitCode, stdout } = await runCli(["cache", "--days", "0", "--json"], dbPath);
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout);
+    expect(parsed.$schema).toBe("ckforensics-cache-v1");
+    // With 0 days, no sessions fall in window
+    expect(parsed.data.totalCacheRead).toBe(0);
+    expect(parsed.data.bySession).toHaveLength(0);
+  });
+
+  it("--format md emits markdown table", async () => {
+    const { exitCode, stdout } = await runCli(["cache", "--days", "365", "--format", "md"], dbPath);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("## Cache Performance");
+    expect(stdout).toContain("| Metric |");
+  });
+
+  it("exits 1 for invalid --days argument", async () => {
+    const { exitCode } = await runCli(["cache", "--days", "abc"], dbPath);
+    expect(exitCode).toBe(1);
+  });
+
+  it("--last exits 0 even when session has no cache data", async () => {
+    const { exitCode } = await runCli(["cache", "--last"], dbPath);
+    expect(exitCode).toBe(0);
+  });
+});

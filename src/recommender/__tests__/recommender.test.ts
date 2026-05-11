@@ -33,8 +33,10 @@ import {
 } from "../skill-usage-tracker.ts";
 import { filterDismissed } from "../dismissed-recs-store.ts";
 import { analyzeSkillEffectiveness } from "../effectiveness-analyzer.ts";
-import { ADVICE_BANK } from "../process-advice-bank.ts";
+import { ADVICE_BANK, SESSION_PROMPT_ADVICE } from "../process-advice-bank.ts";
 import { renderTextRec, renderMarkdownRec } from "../../cli/commands/suggest-formatters.ts";
+import { computeSessionSignals } from "../session-signals.ts";
+import { buildSessionRecommendations } from "../pattern-skill-matcher.ts";
 import type { HydratedEvent } from "../../audit/manifest-types.ts";
 import type { PatternType, SkillCatalogEntry, Pattern } from "../types.ts";
 
@@ -794,5 +796,181 @@ describe("suggest-formatters", () => {
     expect(envelope.recommendations[0]!.type).toBe("skill");
     expect(envelope.recommendations[1]!.type).toBe("process");
     expect(envelope.recommendations[2]!.type).toBe("prompt");
+  });
+});
+
+// ── 11. SESSION_PROMPT_ADVICE + computeSessionSignals ─────────────────────────
+
+describe("SESSION_PROMPT_ADVICE", () => {
+  it("checkpoint-context triggers for sessions >6h", () => {
+    const entry = SESSION_PROMPT_ADVICE.find((e) => e.key === "checkpoint-context")!;
+    expect(entry).toBeDefined();
+    expect(entry.test({ durationMs: 7 * 3_600_000, cacheReadTokens: 0, bashCallsPerTurn: 0 })).toBe(true);
+    expect(entry.test({ durationMs: 5 * 3_600_000, cacheReadTokens: 0, bashCallsPerTurn: 0 })).toBe(false);
+  });
+
+  it("audit-memory-injections triggers for cacheReadTokens >100M", () => {
+    const entry = SESSION_PROMPT_ADVICE.find((e) => e.key === "audit-memory-injections")!;
+    expect(entry).toBeDefined();
+    expect(entry.test({ durationMs: 0, cacheReadTokens: 150_000_000, bashCallsPerTurn: 0 })).toBe(true);
+    expect(entry.test({ durationMs: 0, cacheReadTokens: 50_000_000, bashCallsPerTurn: 0 })).toBe(false);
+  });
+
+  it("pipe-bash-results triggers for bashCallsPerTurn >=5", () => {
+    const entry = SESSION_PROMPT_ADVICE.find((e) => e.key === "pipe-bash-results")!;
+    expect(entry).toBeDefined();
+    expect(entry.test({ durationMs: 0, cacheReadTokens: 0, bashCallsPerTurn: 7 })).toBe(true);
+    expect(entry.test({ durationMs: 0, cacheReadTokens: 0, bashCallsPerTurn: 3 })).toBe(false);
+  });
+
+  it("no advice triggers for short session, low cache, low bash", () => {
+    const triggered = SESSION_PROMPT_ADVICE.filter((e) =>
+      e.test({ durationMs: 30 * 60_000, cacheReadTokens: 1_000_000, bashCallsPerTurn: 1 })
+    );
+    expect(triggered).toHaveLength(0);
+  });
+});
+
+describe("computeSessionSignals", () => {
+  let db: Database;
+
+  beforeEach(() => {
+    db = freshDb();
+    db.run(
+      `INSERT OR IGNORE INTO sessions (id, project_slug, started_at, ended_at, model, total_events)
+       VALUES ('sig-session', 'test', '2025-01-01T00:00:00Z', '2025-01-01T07:30:00Z', 'claude-sonnet-4', 0)`
+    );
+  });
+
+  afterEach(() => { db.close(); });
+
+  it("computes durationMs from started_at / ended_at", () => {
+    const signals = computeSessionSignals(db, "sig-session");
+    expect(signals.durationMs).toBe(7.5 * 3_600_000);
+  });
+
+  it("returns durationMs=null when ended_at is missing", () => {
+    db.run(
+      `INSERT OR IGNORE INTO sessions (id, project_slug, started_at, ended_at, model, total_events)
+       VALUES ('sig-no-end', 'test', '2025-01-01T00:00:00Z', NULL, NULL, 0)`
+    );
+    const signals = computeSessionSignals(db, "sig-no-end");
+    expect(signals.durationMs).toBeNull();
+  });
+
+  it("sums cache_read from token_usage", () => {
+    db.run(
+      `INSERT INTO events (event_id, session_id, type, timestamp, raw_json)
+       VALUES ('ev-1', 'sig-session', 'assistant', '2025-01-01T00:00:00Z', '{}')`
+    );
+    db.run(
+      `INSERT INTO token_usage (event_id, session_id, input, output, cache_read, cache_create)
+       VALUES ('ev-1', 'sig-session', 100, 50, 120000000, 5000000)`
+    );
+    const signals = computeSessionSignals(db, "sig-session");
+    expect(signals.totalCacheReadTokens).toBe(120_000_000);
+  });
+
+  it("computes maxBashCallsPerTurn correctly", () => {
+    db.run(
+      `INSERT INTO events (event_id, session_id, type, timestamp, raw_json)
+       VALUES ('ev-a', 'sig-session', 'assistant', '2025-01-01T00:00:00Z', '{}'),
+              ('ev-b', 'sig-session', 'assistant', '2025-01-01T00:01:00Z', '{}')`
+    );
+    for (let i = 0; i < 3; i++) {
+      db.run(
+        `INSERT INTO tool_calls (id, event_id, session_id, tool_name) VALUES (?, 'ev-a', 'sig-session', 'Bash')`,
+        [`tc-a-${i}`]
+      );
+    }
+    for (let i = 0; i < 7; i++) {
+      db.run(
+        `INSERT INTO tool_calls (id, event_id, session_id, tool_name) VALUES (?, 'ev-b', 'sig-session', 'Bash')`,
+        [`tc-b-${i}`]
+      );
+    }
+    const signals = computeSessionSignals(db, "sig-session");
+    expect(signals.maxBashCallsPerTurn).toBe(7);
+    expect(signals.totalToolCalls).toBe(10);
+  });
+
+  it("returns zeros for session with no tool calls or token usage", () => {
+    const signals = computeSessionSignals(db, "sig-session");
+    expect(signals.totalCacheReadTokens).toBe(0);
+    expect(signals.maxBashCallsPerTurn).toBe(0);
+    expect(signals.totalToolCalls).toBe(0);
+  });
+});
+
+describe("buildSessionRecommendations", () => {
+  it("7h session → checkpoint-context advice in output", () => {
+    const recs = buildSessionRecommendations({
+      sessionId: "s1",
+      durationMs: 7 * 3_600_000,
+      totalCacheReadTokens: 0,
+      maxBashCallsPerTurn: 0,
+      totalToolCalls: 0,
+    });
+    expect(recs.some((r) => r.title.includes("Checkpoint"))).toBe(true);
+    expect(recs.every((r) => r.type === "prompt")).toBe(true);
+  });
+
+  it("150M cache read → audit-memory-injections advice in output", () => {
+    const recs = buildSessionRecommendations({
+      sessionId: "s2",
+      durationMs: 0,
+      totalCacheReadTokens: 150_000_000,
+      maxBashCallsPerTurn: 0,
+      totalToolCalls: 0,
+    });
+    expect(recs.some((r) => r.title.toLowerCase().includes("audit"))).toBe(true);
+  });
+
+  it("7 Bash/turn → pipe-bash-results advice in output", () => {
+    const recs = buildSessionRecommendations({
+      sessionId: "s3",
+      durationMs: 0,
+      totalCacheReadTokens: 0,
+      maxBashCallsPerTurn: 7,
+      totalToolCalls: 50,
+    });
+    expect(recs.some((r) => r.title.toLowerCase().includes("pipe"))).toBe(true);
+  });
+
+  it("short session, low cache → no session-level advice", () => {
+    const recs = buildSessionRecommendations({
+      sessionId: "s4",
+      durationMs: 60_000,
+      totalCacheReadTokens: 0,
+      maxBashCallsPerTurn: 0,
+      totalToolCalls: 3,
+    });
+    expect(recs).toHaveLength(0);
+  });
+
+  it("all three conditions → three advice entries", () => {
+    const recs = buildSessionRecommendations({
+      sessionId: "s5",
+      durationMs: 8 * 3_600_000,
+      totalCacheReadTokens: 200_000_000,
+      maxBashCallsPerTurn: 6,
+      totalToolCalls: 100,
+    });
+    expect(recs.length).toBe(3);
+  });
+
+  it("minConfidence filter excludes low-confidence entries", () => {
+    // All SESSION_PROMPT_ADVICE have baseConfidence 62-65; threshold 70 excludes all
+    const recs = buildSessionRecommendations(
+      {
+        sessionId: "s6",
+        durationMs: 8 * 3_600_000,
+        totalCacheReadTokens: 200_000_000,
+        maxBashCallsPerTurn: 6,
+        totalToolCalls: 100,
+      },
+      70
+    );
+    expect(recs).toHaveLength(0);
   });
 });
