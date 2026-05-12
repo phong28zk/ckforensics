@@ -141,7 +141,7 @@ curl -L https://github.com/phong28zk/ckforensics/releases/latest/download/ckfore
 
 **Inside Claude Code via the bundled `/ck:forensics` skill** — same data, conversational:
 
-[![skill demo](https://asciinema.org/a/UKysKsjkq2wN9qbZ.svg)](https://asciinema.org/a/UKysKsjkq2wN9qbZ)
+[![skill demo](https://asciinema.org/a/Fq82Djwra3Cg4SaM.svg)](https://asciinema.org/a/Fq82Djwra3Cg4SaM)
 
 > One install, two interfaces. Terminal for raw control, skill for in-chat workflow.
 
