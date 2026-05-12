@@ -27,7 +27,10 @@ describe("buildHookCommand", () => {
 
   it("expands ~/ in out path", () => {
     const cmd = buildHookCommand("~/notes/r.md");
-    expect(cmd).toMatch(/--emit '\/[^']+notes\/r\.md'/);
+    // Cross-platform: just verify ~/ was expanded (no literal ~/) and the
+    // tail still references notes/r.md (with native separator).
+    expect(cmd).not.toContain("~/notes");
+    expect(cmd).toMatch(/notes[\\/]r\.md/);
   });
 });
 
