@@ -6,7 +6,7 @@ keywords: [claude-code, audit, forensics, observability, token-cost, context, sk
 argument-hint: "summary|sessions|audit|map|suggest|skills|review|hook|watch|ingest [args]"
 metadata:
   author: phong28zk
-  version: "0.3.2"
+  version: "0.3.3"
   upstream: "https://github.com/phong28zk/ckforensics"
 ---
 

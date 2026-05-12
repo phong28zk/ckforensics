@@ -14,9 +14,17 @@
  */
 
 import React, { useState, useMemo } from "react";
+import { relative as pathRelative, basename } from "node:path";
 import { Box, Text, useInput, useApp } from "ink";
 import type { Hunk, HunkDecision } from "../hunk-types.ts";
 import { buildUnifiedDiff } from "../diff-builder.ts";
+
+/** Shorten an absolute path for display: relative-to-cwd if inside, else basename. */
+function shortPath(absPath: string): string {
+  const rel = pathRelative(process.cwd(), absPath);
+  if (!rel.startsWith("..") && !rel.startsWith("/")) return rel || ".";
+  return basename(absPath);
+}
 
 export type QuitAction = "apply" | "save" | "discard";
 
@@ -39,6 +47,28 @@ export function ReviewApp({ sessionId, hunks, onQuit }: ReviewAppProps): React.J
 
   const total = hunks.length;
   const cur = hunks[idx];
+
+  // Pre-compute per-file groupings + first-hunk indices for jump navigation
+  const fileGroups = useMemo(() => {
+    const groups: Array<{ filePath: string; firstIdx: number; count: number }> = [];
+    let lastPath = "";
+    hunks.forEach((h, i) => {
+      if (h.filePath !== lastPath) {
+        groups.push({ filePath: h.filePath, firstIdx: i, count: 1 });
+        lastPath = h.filePath;
+      } else {
+        groups[groups.length - 1]!.count++;
+      }
+    });
+    return groups;
+  }, [hunks]);
+
+  const curFileGroupIdx = useMemo(() => {
+    if (!cur) return -1;
+    return fileGroups.findIndex((g) => g.filePath === cur.filePath);
+  }, [fileGroups, cur]);
+
+  const curFileGroup = curFileGroupIdx >= 0 ? fileGroups[curFileGroupIdx] : undefined;
 
   const counts = useMemo(() => {
     const c = { keep: 0, revert: 0, skip: 0, unreviewable: 0 };
@@ -93,6 +123,24 @@ export function ReviewApp({ sessionId, hunks, onQuit }: ReviewAppProps): React.J
       if (idx > 0) setIdx(idx - 1);
       return;
     }
+    if (input === "f") {
+      // Jump to next file's first hunk
+      const next = fileGroups[curFileGroupIdx + 1];
+      if (next) setIdx(next.firstIdx);
+      return;
+    }
+    if (input === "F") {
+      // Jump to previous file's first hunk
+      const prev = fileGroups[curFileGroupIdx - 1];
+      if (prev) setIdx(prev.firstIdx);
+      return;
+    }
+    // Numeric jump: 1..9 → first hunk of N-th file
+    if (input >= "1" && input <= "9") {
+      const target = fileGroups[Number(input) - 1];
+      if (target) setIdx(target.firstIdx);
+      return;
+    }
     if (input === "A") {
       // Approve all remaining (keep all from current onwards, excluding unreviewable)
       setDecisions((m) => {
@@ -132,7 +180,15 @@ export function ReviewApp({ sessionId, hunks, onQuit }: ReviewAppProps): React.J
 
   return (
     <Box flexDirection="column" padding={1}>
-      <HeaderBar sessionId={sessionId} idx={idx} total={total} counts={counts} />
+      <HeaderBar
+        sessionId={sessionId}
+        idx={idx}
+        total={total}
+        counts={counts}
+        curFileGroup={curFileGroup}
+        fileTotal={fileGroups.length}
+        curFileGroupIdx={curFileGroupIdx}
+      />
       {showHelp ? <HelpOverlay /> : quitMenu ? <QuitMenu counts={counts} /> : (
         <>
           <HunkPane hunk={cur!} showReason={showReason} />
@@ -146,16 +202,26 @@ export function ReviewApp({ sessionId, hunks, onQuit }: ReviewAppProps): React.J
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function HeaderBar({
-  sessionId, idx, total, counts,
+  sessionId, idx, total, counts, curFileGroup, fileTotal, curFileGroupIdx,
 }: {
   sessionId: string;
   idx: number;
   total: number;
   counts: { keep: number; revert: number; skip: number; unreviewable: number };
+  curFileGroup?: { filePath: string; firstIdx: number; count: number };
+  fileTotal: number;
+  curFileGroupIdx: number;
 }): React.JSX.Element {
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Text bold>ckforensics review — session <Text color="cyan">{sessionId}</Text></Text>
+      {curFileGroup ? (
+        <Text>
+          <Text color="cyan">File {curFileGroupIdx + 1}/{fileTotal}:</Text>{" "}
+          {shortPath(curFileGroup.filePath)}{" "}
+          <Text dimColor>({curFileGroup.count} hunk{curFileGroup.count > 1 ? "s" : ""})</Text>
+        </Text>
+      ) : null}
       <Text dimColor>
         Hunk {idx + 1}/{total}  ·  kept {counts.keep}  ·  revert {counts.revert}  ·  skip {counts.skip}
         {counts.unreviewable > 0 ? `  ·  unreviewable ${counts.unreviewable}` : ""}
@@ -165,15 +231,16 @@ function HeaderBar({
 }
 
 function HunkPane({ hunk, showReason }: { hunk: Hunk; showReason: boolean }): React.JSX.Element {
+  const short = shortPath(hunk.filePath);
   const diff = useMemo(
-    () => (hunk.unreviewable ? "" : buildUnifiedDiff(hunk)),
-    [hunk]
+    () => (hunk.unreviewable ? "" : buildUnifiedDiff(hunk, { pathOverride: short })),
+    [hunk, short]
   );
 
   return (
     <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1}>
       <Text>
-        <Text color="cyan">{hunk.filePath}</Text>{"  "}
+        <Text color="cyan">{short}</Text>{"  "}
         <Text dimColor>{hunk.type} @ {hunk.timestamp}</Text>
       </Text>
       {hunk.reason ? (
@@ -213,9 +280,12 @@ function DiffBody({ diff }: { diff: string }): React.JSX.Element {
 
 function FooterBar(): React.JSX.Element {
   return (
-    <Box marginTop={1}>
+    <Box marginTop={1} flexDirection="column">
       <Text dimColor>
-        [y]keep  [n]revert  [s]skip  [←/→]nav  [A]approve-all  [R]reject-all  [r]reason  [q]quit  [?]help
+        [y]keep  [n]revert  [s]skip  [←/→]hunk  [f/F]file  [1-9]jump  [A]approve-all  [R]reject-all
+      </Text>
+      <Text dimColor>
+        [r]reason  [q]quit  [?]help
       </Text>
     </Box>
   );
@@ -229,6 +299,8 @@ function HelpOverlay(): React.JSX.Element {
       <Text>  n       revert current hunk, advance</Text>
       <Text>  s       skip (decision unset)</Text>
       <Text>  ←       previous hunk</Text>
+      <Text>  f / F   next file / previous file (jumps to first hunk)</Text>
+      <Text>  1-9     jump to N-th file's first hunk</Text>
       <Text>  A       approve all remaining (keep)</Text>
       <Text>  R       reject all remaining (revert)</Text>
       <Text>  r       toggle full reasoning</Text>

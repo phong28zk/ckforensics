@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-05-12 — TUI polish
+
+### Changed
+- **Diff headers in TUI now show short paths** instead of `a//absolute/path` double-slash. Uses cwd-relative when inside, else basename.
+- **Header bar gained file-context line:** "File 3/8: src/foo.ts (4 hunks)" — knowing where you are in a 44-hunk session.
+
+### Added
+- **Jump-to-file keybindings** in TUI: `f` next file, `F` previous file, `1-9` jump to N-th file's first hunk. Footer + help overlay updated.
+
 ## [0.3.2] - 2026-05-12 — Auto-trigger review (hook + watch daemon)
 
 ### Added
