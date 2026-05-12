@@ -22,6 +22,7 @@ beforeEach(async () => {
   await runGit(["init", "-q"], repo);
   await runGit(["config", "user.email", "t@t"], repo);
   await runGit(["config", "user.name", "t"], repo);
+  await runGit(["config", "core.autocrlf", "false"], repo);
 });
 
 afterEach(() => {

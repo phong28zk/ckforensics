@@ -19,6 +19,7 @@ beforeAll(async () => {
   await runGit(["init", "-q"], tmpRepo);
   await runGit(["config", "user.email", "test@example.com"], tmpRepo);
   await runGit(["config", "user.name", "test"], tmpRepo);
+  await runGit(["config", "core.autocrlf", "false"], tmpRepo);
 });
 
 afterAll(() => {
@@ -147,6 +148,9 @@ describe("buildPatch", () => {
     // Set up two before-state files
     const subdir = mkdtempSync(join(tmpdir(), "ckforensics-multi-"));
     await runGit(["init", "-q"], subdir);
+    await runGit(["config", "user.email", "test@example.com"], subdir);
+    await runGit(["config", "user.name", "test"], subdir);
+    await runGit(["config", "core.autocrlf", "false"], subdir);
     writeFileSync(join(subdir, "p.txt"), "one\n");
     writeFileSync(join(subdir, "q.txt"), "two\n");
 

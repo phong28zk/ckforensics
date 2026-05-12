@@ -31,6 +31,10 @@ async function initGitRepo(): Promise<string> {
   await runGit(["init", "-q"], dir);
   await runGit(["config", "user.email", "test@example.com"], dir);
   await runGit(["config", "user.name", "test"], dir);
+  // Disable autocrlf to keep working-tree bytes identical across CI runners.
+  // Windows defaults to autocrlf=true which would silently convert LF→CRLF
+  // and break exact-string assertions.
+  await runGit(["config", "core.autocrlf", "false"], dir);
   return dir;
 }
 
