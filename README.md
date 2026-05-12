@@ -133,6 +133,14 @@ curl -L https://github.com/phong28zk/ckforensics/releases/latest/download/ckfore
 
 ---
 
+## Demo
+
+[![asciicast](https://asciinema.org/a/PLACEHOLDER.svg)](https://asciinema.org/a/PLACEHOLDER)
+
+> 60-second walkthrough: ingest → summary → hunk-by-hunk review → auto-trigger hook.
+
+---
+
 ## Quick Start
 
 ```bash
