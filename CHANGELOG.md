@@ -6,6 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-05-12 — Auto-trigger review (hook + watch daemon)
+
+### Added
+- **`ckforensics hook install|uninstall|status`** — non-destructively wires a `Stop` hook into `~/.claude/settings.json` so a review markdown is auto-emitted every time a Claude Code session ends. Preserves other user-configured hooks; tagged `managed-by:ckforensics` so re-install is idempotent and uninstall surgical.
+  - `--exec '<cmd>'` runs a follow-up command with `{path}` substitution (e.g. `code {path}` to auto-open in VS Code).
+  - `--out-path <file>` overrides default `~/.cache/ckforensics/last-review.md`.
+- **`ckforensics watch [--idle SECONDS] [--exec CMD]`** — long-running daemon alternative to the Stop hook. Polls `~/.claude/projects/**/*.jsonl`; when the latest session goes idle for the threshold, runs `ingest` + `review --emit` + optional `--exec`. Useful for users who don't want to modify settings.json.
+- **README "Post-session review (three UX modes)" section** documenting manual / hook / watch paths with a clear comparison.
+- **SKILL.md updated** with `hook` and `watch` subcommand handlers.
+
+### Tests
+- 13 new tests covering hook installer purity (idempotent re-install, surgical uninstall, preservation of unrelated hook types, sentinel detection). Total: 366 pass.
+
 ## [0.3.1] - 2026-05-12 — Cross-platform review safety
 
 ### Added

@@ -3,10 +3,10 @@ name: ck:forensics
 description: "Forensic analysis of Claude Code sessions — token cost, context map, audit manifest, skill recommendations. Use when user asks 'what did Claude touch', 'where did my tokens go', 'how much did this session cost', 'show last session', 'what skill should I have used', or wants post-hoc review of CC work."
 category: dev-tools
 keywords: [claude-code, audit, forensics, observability, token-cost, context, skill-recommender, session-review]
-argument-hint: "summary|sessions|audit|map|suggest|skills|review|ingest [args]"
+argument-hint: "summary|sessions|audit|map|suggest|skills|review|hook|watch|ingest [args]"
 metadata:
   author: phong28zk
-  version: "0.3.1"
+  version: "0.3.2"
   upstream: "https://github.com/phong28zk/ckforensics"
 ---
 
@@ -154,6 +154,36 @@ ckforensics review --last --emit review.md
 ckforensics review --batch --decisions review.md --dry-run   # preview
 ckforensics review --batch --decisions review.md             # apply
 ```
+
+### `hook install [--exec CMD] [--out-path FILE]`
+
+Wire `ckforensics review --last --emit` into Claude Code's **Stop hook** so a review markdown is auto-generated every time a session ends. Idempotent; preserves other user-configured hooks.
+
+```bash
+# Basic: write review.md to default cache path on every session end
+ckforensics hook install
+
+# Auto-open in VS Code when ready
+ckforensics hook install --exec 'code {path}'
+
+# Check / remove
+ckforensics hook status
+ckforensics hook uninstall
+```
+
+The `{path}` token in `--exec` is replaced with the resolved review-file path.
+
+### `watch [--idle SECONDS] [--exec CMD] [--out-path FILE]`
+
+Long-running daemon alternative to the Stop hook. Polls `~/.claude/projects/**/*.jsonl`; when the active session goes idle for the threshold, runs `ingest` + `review --last --emit`.
+
+```bash
+ckforensics watch --idle 30                                 # default
+ckforensics watch --idle 60 --exec 'code {path}'            # auto-open in editor
+ckforensics watch --once --exec 'notify-send "Review ready: {path}"'
+```
+
+Useful when you don't want to modify `~/.claude/settings.json`, or when running ckforensics as a sidecar process.
 
 ### `ingest`
 

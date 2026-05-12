@@ -212,12 +212,60 @@ Logs (daily-rotated):
 | `map` | Context-window heatmap by category, snapshot/diff/pin |
 | `suggest` | Skill recommendations from detected tool patterns |
 | `skills` | Browse ClaudeKit skill catalog with usage stats |
+| `review` | Hunk-by-hunk Copilot-style review of session edits (TUI / emit / batch) |
+| `hook install` | Wire Claude Code Stop hook so review auto-runs after every session |
+| `watch` | Daemon: poll for session-end → auto-emit review markdown |
 | `export` | Pipe-friendly export (markdown, JSON, CSV) |
 | `redact` | Strip 9 secret patterns from a file |
 | `doctor` | Health check (DB, paths, schema version, log activity) |
 | `path` | Show all resolved file system paths |
 
 Run `ckforensics <cmd> --help` for flags.
+
+---
+
+## Post-session review (three UX modes)
+
+After Claude Code finishes a session, walk through every edit hunk-by-hunk and accept/reject each — similar to GitHub Copilot's review panel, but driven by ckforensics' manifest (knows file, when, why).
+
+**Mode 1 — Manual** *(default; control freaks)*
+
+```bash
+ckforensics review --last                          # interactive TUI
+# or:
+ckforensics review --last --emit review.md         # write checklist
+# tick [x] in your editor → batch apply
+ckforensics review --batch --decisions review.md --dry-run
+ckforensics review --batch --decisions review.md
+```
+
+**Mode 2 — Stop hook** *(auto-trigger when session ends)*
+
+```bash
+ckforensics hook install --exec 'code {path}'      # write + open in VS Code
+# Verify:
+ckforensics hook status
+# Remove later:
+ckforensics hook uninstall
+```
+
+The hook is appended to `~/.claude/settings.json` non-destructively and tagged `managed-by:ckforensics`. Other user hooks are untouched.
+
+**Mode 3 — Watch daemon** *(when you don't want to touch settings.json)*
+
+```bash
+ckforensics watch --idle 30 --exec 'code {path}'
+```
+
+Polls `~/.claude/projects/**/*.jsonl`; when the active session goes idle for the threshold, runs `ingest` + `review --emit` + your `--exec` command.
+
+### Safety guarantees
+
+- Refuses to revert files with **uncommitted user changes** unless `--allow-dirty`
+- Refuses files in **UTF-16 / UTF-32** unconditionally (corruption risk)
+- Preserves **CRLF** line endings when target is Windows-style (MQL5, C#, .bat)
+- Detects **content drift** when running outside git
+- Hunks where Claude didn't `Read` first are **reconstructed** from git HEAD or the edit chain (lifts reviewable rate ~5× in practice)
 
 ---
 
