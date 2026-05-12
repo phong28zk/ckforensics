@@ -6,6 +6,45 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-05-12 — Cross-platform review safety
+
+### Added
+- **Line-ending preservation** (`src/review/line-ending-helper.ts`): `detectLineEnding()` heuristic over file bytes (LF vs CRLF dominance). `buildUnifiedDiff` accepts a `lineEnding` opt that suffixes payload lines with `\r` so `git apply --reverse` matches Windows-edited / MQL5 / legacy C# files on disk. Headers stay LF.
+- **Encoding refusal** (`src/review/encoding-helper.ts`): `detectEncoding()` sniffs BOM. UTF-8 + UTF-8-BOM supported; UTF-16/UTF-32 LE/BE explicitly refused with `refused-encoding` status. **Bypasses `--allow-dirty`** — corruption risk too high to override.
+- Tests: 17 new (`line-ending-helper`, `encoding-helper`, CRLF round-trip in `revert-engine`, UTF-16 refusal). Total: 353 pass.
+
+### Changed
+- Version bumped to 0.3.1 in `package.json` and `src/cli/index.ts`.
+- `SafetyVerdict` gained `unsupported-encoding` variant.
+- `RevertStatus` gained `refused-encoding`.
+
+### Coverage
+Now safe for: Rust, Go, Python, JS/TS, MQL5 (CRLF + UTF-8), C# (with/without BOM), shell scripts, Lua, Elixir, Java, Kotlin, Swift. Unsafe-by-design: UTF-16/UTF-32 (refused before any modification).
+
+## [0.3.0] - 2026-05-12 — Post-Session Edit Review (Copilot-style)
+
+### Added
+- **`ckforensics review` command** — walk through Claude's edits hunk-by-hunk, accept/reject each. Three modes:
+  - **Interactive TUI** (ink/React): keybindings `y`/`n`/`s` per-hunk, `A`/`R` approve-all/reject-all, `←/→` nav, `r` reasoning, `q` quit-menu.
+  - **Emit markdown:** `--emit FILE` produces a checklist with sentinel anchors; user toggles `[ ] → [x]` in any editor.
+  - **Batch apply:** `--batch --decisions FILE` reads the toggled markdown and applies reverts.
+- **Revert engine** (`src/review/revert-engine.ts`): sequential newest-first apply via `git apply --reverse`, falls back to direct file rewrite when non-git or git fails. Atomic per-file (temp + rename).
+- **Safety check** (`src/review/safety-check.ts`): refuses revert when target file has uncommitted user changes (porcelain check). Non-git mode: sha1 drift detection against last EditOp's `after`. Override with `--allow-dirty`.
+- **Hunk model** (`src/review/hunk-types.ts`, `hunk-builder.ts`): one EditOp = one Hunk; MultiEdit explodes; flags `unreviewable` for unknown-before / write-new-file / identical / binary.
+- **Diff builder** (`src/review/diff-builder.ts`): produces unified diff parseable by `git apply --check` (validated in tests).
+- **Markdown round-trip** (`markdown-emitter.ts`, `markdown-parser.ts`): HTML-comment sentinels resistant to user edits; tolerant parser ignores unknown hunk IDs.
+- **Write-new-file as delete-revert** (`revertKind: "delete"`): Reverting a Write hunk that created a new file now removes the file rather than being marked unreviewable. Delete-kind hunks supersede patch hunks against the same file.
+- **Unknown-before hydration** (`src/review/hydrate-before.ts`): Hunks that landed with `unknownBefore=true` (Claude didn't `Read` first) are reconstructed from git HEAD (first-in-chain) or chained from preceding hunk's `after` (subsequent hunks). Dogfood test on this session: reviewable rate jumped from 11% to 73%.
+- **`/ck:forensics` skill** updated to advertise the `review` subcommand and include workflow examples.
+
+### Changed
+- Version bumped to 0.3.0 in `package.json` and `src/cli/index.ts`.
+- New runtime deps: `ink`, `react` (lazy-loaded only for interactive TUI).
+- ROADMAP labels corrected: Post-Session Edit Review now v0.3.0, Stretch Goals v0.4.0+, VCS Integration v0.5.0, Notifications v0.6.0.
+
+### Tests
+- 30 new tests across `hunk-builder`, `diff-builder`, `markdown-roundtrip`, `revert-engine`, `hydrate-before`. Include real `git apply --check` and `git show HEAD:` validation. Total: 336 tests pass.
+
 ## [0.2.5] - 2026-05-11
 
 ### Added

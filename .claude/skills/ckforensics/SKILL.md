@@ -3,10 +3,10 @@ name: ck:forensics
 description: "Forensic analysis of Claude Code sessions — token cost, context map, audit manifest, skill recommendations. Use when user asks 'what did Claude touch', 'where did my tokens go', 'how much did this session cost', 'show last session', 'what skill should I have used', or wants post-hoc review of CC work."
 category: dev-tools
 keywords: [claude-code, audit, forensics, observability, token-cost, context, skill-recommender, session-review]
-argument-hint: "summary|sessions|audit|map|suggest|skills|ingest [args]"
+argument-hint: "summary|sessions|audit|map|suggest|skills|review|ingest [args]"
 metadata:
   author: phong28zk
-  version: "0.2.1"
+  version: "0.3.1"
   upstream: "https://github.com/phong28zk/ckforensics"
 ---
 
@@ -34,6 +34,7 @@ If invoked without arguments, use `AskUserQuestion` to present operations:
 | `map` | Context-window heatmap (what eats tokens?) |
 | `suggest` | Skills that would have helped (pattern detection) |
 | `skills` | List/search indexed skills with usage stats |
+| `review` | Hunk-by-hunk Copilot-style review of session edits (accept/reject) |
 | `ingest` | Refresh DB from `~/.claude/projects/` |
 
 Present via `AskUserQuestion` with header "Forensics" and question "Which analysis?".
@@ -136,6 +137,22 @@ List indexed skills. `--unused` shows skills you have but never invoked. Discove
 ```bash
 ckforensics skills --refresh        # re-scan ~/.claude/skills/
 ckforensics skills --unused | head  # what am I missing?
+```
+
+### `review [--last|<session-id>] [--emit FILE | --batch --decisions FILE]`
+
+Walk through Claude's edits hunk-by-hunk. Three modes:
+
+- **Interactive TUI** (default, requires terminal): keybindings `y` keep / `n` revert / `s` skip / `A` approve-all / `R` reject-all / `q` quit-menu.
+- **Emit markdown:** `ckforensics review --last --emit review.md` writes a checklist; toggle `[ ] → [x]` in your editor.
+- **Batch apply:** `ckforensics review --batch --decisions review.md [--dry-run] [--allow-dirty]` applies reverts via `git apply --reverse` with safety check.
+
+```bash
+# Typical post-session flow:
+ckforensics review --last --emit review.md
+# (edit review.md, tick [x] for hunks to revert)
+ckforensics review --batch --decisions review.md --dry-run   # preview
+ckforensics review --batch --decisions review.md             # apply
 ```
 
 ### `ingest`

@@ -33,6 +33,7 @@ import { registerSuggestCommand } from "./commands/suggest.ts";
 import { registerSkillsCommand } from "./commands/skills.ts";
 import { registerMapCommand } from "./commands/map.ts";
 import { registerCacheCommand } from "./commands/cache.ts";
+import { registerReviewCommand } from "./commands/review.ts";
 
 // ── Build program ──────────────────────────────────────────────────────────────
 
@@ -44,7 +45,7 @@ program
     "Forensic analysis and audit tool for Claude Code session logs.\n" +
     "Ingests JSONL sessions, queries usage, and exports reports."
   )
-  .version("0.2.5", "-V, --version", "print version and exit")
+  .version("0.3.1", "-V, --version", "print version and exit")
   // Global flags — available on all subcommands via program.opts()
   .option("--db <path>", "override SQLite database path", resolveDbPath())
   .option("--no-color", "disable ANSI colour output")
@@ -73,6 +74,7 @@ registerSuggestCommand(program);
 registerSkillsCommand(program);
 registerMapCommand(program);
 registerCacheCommand(program);
+registerReviewCommand(program);
 
 // ── Parse & run ────────────────────────────────────────────────────────────────
 

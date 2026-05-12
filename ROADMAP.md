@@ -25,7 +25,7 @@
   - `ckforensics path` will surface log directory
   - Critical for cron-driven `ingest --watch` users to debug failures
 
-## v0.2.1 — Post-Session Edit Review (Copilot-style)
+## v0.3.0 — Post-Session Edit Review (Copilot-style)
 
 After Claude Code finishes a session, walk through every edit hunk-by-hunk and let user accept/reject each independently. Similar to `git add -p` but driven by ckforensics' session manifest (knows what Claude touched, when, why).
 
@@ -40,7 +40,7 @@ After Claude Code finishes a session, walk through every edit hunk-by-hunk and l
 
 Trade-off: Claude Code itself owns in-flight approval (permission modes). ckforensics is post-hoc — same session, "approve all + review after" workflow.
 
-## v0.3.0+ — Stretch Goals
+## v0.4.0+ — Stretch Goals
 
 - **Reasoning Verifier** (LLM-assisted) — opt-in flag, uses user's API key, deterministic + semantic matching
 - **Subagent cost forensics** — recursive Agent() breakdown
