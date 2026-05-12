@@ -110,9 +110,12 @@ for spec in "${TARGETS[@]}"; do
 
   log "Building ${bun_target} → ${outfile}"
 
+  # --external react-devtools-core: ink imports this as an optional peer dep
+  # for dev-mode hot reload; we never need it at runtime in the compiled binary.
   if bun build \
       --compile \
       --target="${bun_target}" \
+      --external react-devtools-core \
       "${ENTRY}" \
       --outfile "${outfile}" 2>&1; then
 
