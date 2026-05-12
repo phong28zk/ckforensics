@@ -58,6 +58,24 @@ After Claude Code finishes a session, ckforensics parses `~/.claude/projects/**/
 ```
 
 ```
+╭─ ckforensics review --last  (Copilot-style hunk review) ───────╮
+│  File 3/8: src/review/revert-engine.ts (4 hunks)                │
+│  Hunk 12/44  ·  kept 11  ·  revert 0  ·  unreviewable 12        │
+│  ┌──────────────────────────────────────────────────────────┐    │
+│  │ Reason: Fix multi-hunk sequential apply                  │    │
+│  │ --- a/src/review/revert-engine.ts                        │    │
+│  │ +++ b/src/review/revert-engine.ts                        │    │
+│  │ -  const patch = buildPatch(sorted);                     │    │
+│  │ +  for (const h of sorted) {                             │    │
+│  │ +    const patch = buildUnifiedDiff(h, ...);             │    │
+│  └──────────────────────────────────────────────────────────┘    │
+│  [y]keep [n]revert [s]skip [f/F]file [1-9]jump [A]all [R]none   │
+│                                                                   │
+│  ↑ Accept/reject each edit after Claude finished                 │
+╰──────────────────────────────────────────────────────────────────╯
+```
+
+```
 ╭─ ckforensics audit --last  (session change manifest) ──────────╮
 │  ## Subagent Cost Breakdown                                      │
 │                                                                   │
@@ -123,6 +141,8 @@ ckforensics summary                        # weekly totals
 ckforensics audit --last                   # last session manifest
 ckforensics map --last --top 10            # context heatmap
 ckforensics suggest --last                 # skill recommendations
+ckforensics review --last                  # Copilot-style hunk review (TUI)
+ckforensics hook install --exec 'code {path}'  # auto-emit review on session end
 ckforensics doctor                         # health check
 ```
 
@@ -193,6 +213,8 @@ Logs (daily-rotated):
 | Pre-compact simulation | ✅ | ❌ | ❌ |
 | Skill recommendation engine | ✅ | ❌ | ❌ |
 | Session change manifest (diff + reasoning) | ✅ | ❌ | ❌ |
+| Post-session hunk-by-hunk review (Copilot-style) | ✅ | ❌ | ❌ |
+| Auto-trigger via Stop hook / watch daemon | ✅ | ❌ | ❌ |
 | Secret redaction (9 rules) | ✅ | ❌ | ❌ |
 | Markdown / JSON / CSV export | ✅ | 🟡 | ❌ |
 | Offline, zero telemetry | ✅ | ✅ | ✅ |
